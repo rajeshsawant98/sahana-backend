@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+pydantic
+authlib
+google-auth
+python-jose
+sqlalchemy
+databases
