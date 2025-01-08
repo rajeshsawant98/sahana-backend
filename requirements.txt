@@ -6,3 +6,4 @@ google-auth
 python-jose
 sqlalchemy
 databases
+firebase-admin
