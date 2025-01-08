@@ -8,3 +8,5 @@ sqlalchemy
 databases
 firebase-admin
 python-dotenv
+passlib
+bcrypt
