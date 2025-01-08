@@ -1,9 +1,18 @@
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env
+load_dotenv()
+
+# Get the credential path from the environment
+firebase_cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
 import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Initialize Firebase
 def initialize_firebase():
-    cred = credentials.Certificate("app/auth/firebase_cred.json")
+    cred = credentials.Certificate(firebase_cred_path)
     firebase_admin.initialize_app(cred)
 
 # Store user data in Firestore

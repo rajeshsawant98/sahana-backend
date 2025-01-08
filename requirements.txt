@@ -7,3 +7,4 @@ python-jose
 sqlalchemy
 databases
 firebase-admin
+python-dotenv
