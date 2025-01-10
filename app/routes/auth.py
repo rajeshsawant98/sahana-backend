@@ -63,7 +63,14 @@ async def register_user(request: RegisterRequest):
         raise HTTPException(status_code=400, detail="Email already exists")
 
     store_user_with_password(request.email, request.password, request.name)
-    return {"message": "User registered successfully"}
+    access_token = create_access_token(data={"sub": request.email})
+
+    
+    return {
+        "message": "User registered successfully",
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
 
 # Protected route example that requires authentication
 @auth_router.get("/me")
