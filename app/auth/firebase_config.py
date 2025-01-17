@@ -3,6 +3,7 @@ import os
 from passlib.context import CryptContext  # Passlib context for hashing
 import firebase_admin
 from firebase_admin import credentials, firestore
+from fastapi import HTTPException
 
 # Load environment variables from .env
 load_dotenv()
@@ -32,7 +33,7 @@ def store_user_data(user_data):
             "name": user_data["name"],
             "email": user_data["email"],
             "profile_picture": user_data["profile_picture"]
-        })
+        }, merge=True)
         print(f"User data stored for: {user_data['email']}")
     except Exception as e:
         print(f"Error storing user data: {str(e)}")
@@ -97,13 +98,76 @@ def get_user_by_email(email: str):
             initialize_firebase()
 
         db = firestore.client()
-        user_ref = db.collection("users").document(email)
-        user = user_ref.get()
+        # Query the 'users' collection where the 'email' field matches the given email
+        users_ref = db.collection("users")
+        query = users_ref.where("email", "==", email)
+        results = query.stream()
 
-        if user.exists:
+        # Check if there are any results from the query
+        user = next(results, None)  # Get the first user from the query stream, or None if no users found
+        if user:
             return user.to_dict()
         print(f"No user found with email: {email}")
         return None
     except Exception as e:
         print(f"Error retrieving user data by email: {str(e)}")
         return None
+
+# Update user profile in Firestore
+def update_user_data(user_data: dict, user_email: str):
+    try:
+        if not firebase_admin._apps:
+            initialize_firebase()
+
+        db = firestore.client()
+
+        # Query the 'users' collection where the 'email' field matches the given email
+        users_ref = db.collection("users")
+        query = users_ref.where("email", "==", user_email)
+        results = query.stream()
+
+        # Get the first result (if any)
+        user = next(results, None)
+
+        if user:
+            user_ref = db.collection("users").document(user.id)  # Get the document reference using the document ID
+            # Update user profile with the new data
+            user_ref.update({
+                "name": user_data.get("name", user.to_dict().get("name", "")),  # Update name if provided, else keep the old name
+                "profile_picture": user_data.get("profile_picture", user.to_dict().get("profile_picture", "")),  # Update profile picture if provided
+            })
+            print(f"User profile updated for: {user_email}")
+        else:
+            print(f"No user found with email: {user_email}")
+
+    except Exception as e:
+        print(f"Error updating user data: {str(e)}")
+
+# Store or update user data based on existence
+def store_or_update_user_data(user_data):
+    try:
+        # Initialize Firebase if not already done
+        if not firebase_admin._apps:
+            initialize_firebase()
+
+        db = firestore.client()
+        user_email = user_data["email"]
+
+        # Check if the user already exists
+        existing_user = get_user_by_email(user_email)
+
+        if existing_user:
+            # User exists, update the profile
+            update_user_data(user_data, user_email)
+        else:
+            # User does not exist, create a new profile
+            user_ref = db.collection("users").document(user_email)
+            user_ref.set({
+                "name": user_data["name"],
+                "email": user_email,
+                "profile_picture": user_data["profile_picture"]
+            })
+            print(f"New user profile created for: {user_email}")
+
+    except Exception as e:
+        print(f"Error storing or updating user data: {str(e)}")
