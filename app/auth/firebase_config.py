@@ -100,7 +100,7 @@ def get_user_by_email(email: str):
         db = firestore.client()
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
-        query = users_ref.where("email", "==", email)
+        query = users_ref.where(field_path="email",op_string= "==",value= email)
         results = query.stream()
 
         # Check if there are any results from the query
@@ -123,7 +123,7 @@ def update_user_data(user_data: dict, user_email: str):
 
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
-        query = users_ref.where("email", "==", user_email)
+        query = users_ref.where(field_path="email", op_string="==", value=user_email)
         results = query.stream()
 
         # Get the first result (if any)
@@ -135,6 +135,7 @@ def update_user_data(user_data: dict, user_email: str):
             user_ref.update({
                 "name": user_data.get("name", user.to_dict().get("name", "")),  # Update name if provided, else keep the old name
                 "profile_picture": user_data.get("profile_picture", user.to_dict().get("profile_picture", "")),  # Update profile picture if provided
+                "interests": user_data.get("interests", user.to_dict().get("interests", []))  # Update interests if provided, else keep the old interests
             })
             print(f"User profile updated for: {user_email}")
         else:

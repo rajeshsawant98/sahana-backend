@@ -23,6 +23,9 @@ class RegisterRequest(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     name: str
+    
+class UpdateInterestsRequest(BaseModel):
+    interests: list
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -45,7 +48,7 @@ async def google_login(request: GoogleLoginRequest):
         store_user_data(user_data)
         access_token = create_access_token(data={"email": user_data["email"]})
 
-        return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer"}
+        return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer" , "email": user_data["email"]}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail="Google login failed")
@@ -58,7 +61,7 @@ async def normal_login(request: NormalLoginRequest):
         raise HTTPException(status_code=400, detail="Invalid credentials")
 
     access_token = create_access_token(data={"email": user["email"]})
-    return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer"}
+    return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer", "email": user["email"]}
 
 @auth_router.post("/register")
 async def register_user(request: RegisterRequest):
@@ -72,7 +75,8 @@ async def register_user(request: RegisterRequest):
     return {
         "message": "User registered successfully",
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "email": request.email
     }
 
 # Protected route example that requires authentication
@@ -87,6 +91,7 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
         "email": user["email"],
         "name": user["name"],
         "profile_picture": user.get("profile_picture", ""),
+        "interests": user.get("interests", [])
     }
     
 @auth_router.put("/me")
@@ -98,7 +103,20 @@ async def update_profile(request: UpdateProfileRequest, current_user: dict = Dep
 
     # Update the user's profile (you can extend this for other fields like profile_picture)
     user["name"] = request.name
-    print(user)
     store_or_update_user_data(user)  # Update in Firestore or your database
 
     return {"message": "Profile updated successfully"}
+
+@auth_router.put("/me/interests")
+async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(get_current_user)):
+    user = get_user_by_email(current_user["email"])
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    print(user)
+
+    # Update the user's interests
+    user["interests"] = request.interests
+    store_or_update_user_data(user)
+    
+    return {"message": "User Interests updated successfully"}
+
