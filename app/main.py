@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth import auth_router  # Import the auth router
+from app.routes.event_routes import event_router  # Import the event router
 
 app = FastAPI()
 
@@ -15,3 +16,4 @@ app.add_middleware(
 
 # Register the auth router with a prefix for API routes
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(event_router, prefix="/api/events", tags=["Events"])
