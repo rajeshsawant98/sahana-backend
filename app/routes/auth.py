@@ -23,6 +23,11 @@ class RegisterRequest(BaseModel):
 
 class UpdateProfileRequest(BaseModel):
     name: str
+    profession: str
+    bio: str
+    phoneNumber: str
+    location: object
+    birthdate: str
     
 class UpdateInterestsRequest(BaseModel):
     interests: list
@@ -91,18 +96,27 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
         "email": user["email"],
         "name": user["name"],
         "profile_picture": user.get("profile_picture", ""),
-        "interests": user.get("interests", [])
+        "interests": user.get("interests", []),
+        "profession": user.get("profession", ""),
+        "bio": user.get("bio", ""),
+        "phoneNumber": user.get("phoneNumber", ""),
+        "location": user.get("location", {}),
+        "birthdate": user.get("birthdate", "")
     }
     
 @auth_router.put("/me")
 async def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(get_current_user)):
     user = get_user_by_email(current_user["email"])
-    print(user)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
     # Update the user's profile (you can extend this for other fields like profile_picture)
     user["name"] = request.name
+    user["profession"] = request.profession
+    user["bio"] = request.bio
+    user["phoneNumber"] = request.phoneNumber
+    user["birthdate"] = request.birthdate
+    user["location"] = request.location
     store_or_update_user_data(user)  # Update in Firestore or your database
 
     return {"message": "Profile updated successfully"}
