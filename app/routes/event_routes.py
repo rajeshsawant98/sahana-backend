@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel , Field
 from typing import List, Optional
 from app.services.event_service import create_event, get_all_events, get_event_by_id, update_event
 
@@ -8,21 +8,23 @@ event_router = APIRouter()
 # Event request model
 class EventCreateRequest(BaseModel):
     eventName: str
-    location: str
+    location: dict
     startTime: str  # Should be in ISO format (e.g., "2025-02-01T15:30:00Z")
-    duration: int  # Duration in minutes
+    duration: int = Field(..., gt=0)
     categories: List[str]
-    isOnline: bool
+    isOnline: Optional[bool] = False
     joinLink: Optional[str] = None
     imageURL: Optional[str] = None
     createdBy: str  # User ID or email of the event creator
     createdByEmail: str
     createdAt: Optional[str] = None
+    description: Optional[str] = None
 
 # Create event route
 @event_router.post("/new")
 async def create_new_event(event: EventCreateRequest):
     event_data = event.model_dump()
+    print(event_data)
     result = create_event(event_data)
 
     if result:

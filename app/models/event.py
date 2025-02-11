@@ -4,7 +4,7 @@ from datetime import datetime
 
 class EventCreate(BaseModel):
     event_name: str
-    location: str
+    location: dict
     start_time: datetime
     duration: int  # Duration in minutes
     categories: List[str]
@@ -13,3 +13,5 @@ class EventCreate(BaseModel):
     picture: Optional[str] = None  # URL or path to picture if available
     event_creator_name: str
     event_creator_email: str
+    lat: float = None  # Latitude
+    lng: float = None  # Longitude
