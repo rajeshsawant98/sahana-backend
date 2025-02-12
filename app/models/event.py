@@ -2,7 +2,7 @@ from pydantic import BaseModel , Field
 from typing import List, Optional
 from datetime import datetime
 
-class EventCreate(BaseModel):
+class event(BaseModel):
     eventName: str
     location: dict
     startTime: str  # Should be in ISO format (e.g., "2025-02-01T15:30:00Z")

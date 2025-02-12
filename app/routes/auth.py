@@ -134,7 +134,7 @@ async def update_interests(request: UpdateInterestsRequest, current_user: dict =
     
     return {"message": "User Interests updated successfully"}
 
-#my Events
+# Fetch events created by the user
 @auth_router.get("/me/events/created")
 async def fetch_my_events(current_user: dict = Depends(get_current_user)):
     email = current_user["email"]
