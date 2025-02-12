@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException , Depends
 from pydantic import BaseModel , Field
 from typing import List, Optional
-from app.services.event_service import create_event, get_all_events, get_event_by_id, update_event
+from app.services.event_service import create_event, get_all_events, get_event_by_id, update_event , get_my_events
+from app.auth.jwt_utils import get_current_user
 
 event_router = APIRouter()
 
@@ -52,3 +53,6 @@ async def modify_event(event_id: str, update_data: dict):
     if success:
         return {"message": "Event updated successfully"}
     raise HTTPException(status_code=404, detail="Failed to update event")
+
+# Delete event
+

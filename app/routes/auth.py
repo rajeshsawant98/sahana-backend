@@ -5,6 +5,7 @@ from google.auth.transport.requests import Request
 from app.auth.firebase_config import store_or_update_user_data, store_user_data, store_user_with_password, verify_user_password, get_user_by_email
 from app.auth.jwt_utils import create_access_token, get_current_user  # Import get_current_user from jwt_utils
 from fastapi.security import OAuth2PasswordBearer
+from app.services.event_service import get_my_events
 
 auth_router = APIRouter()
 
@@ -87,7 +88,6 @@ async def register_user(request: RegisterRequest):
 # Protected route example that requires authentication
 @auth_router.get("/me")
 async def get_profile(current_user: dict = Depends(get_current_user)):
-    print(current_user)
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -134,3 +134,14 @@ async def update_interests(request: UpdateInterestsRequest, current_user: dict =
     
     return {"message": "User Interests updated successfully"}
 
+#my Events
+@auth_router.get("/me/events/created")
+async def fetch_my_events(current_user: dict = Depends(get_current_user)):
+    email = current_user["email"]
+    events = get_my_events(email)
+    
+    print(events)
+    if events:
+        return {"message": "Events fetched successfully", "events": events}
+    else:
+        raise HTTPException(status_code=404, detail="No events found for the user")

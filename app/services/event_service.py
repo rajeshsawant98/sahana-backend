@@ -96,3 +96,18 @@ def update_event(event_id, update_data):
     except Exception as e:
         print(f"Error updating event: {str(e)}")
         return False
+    
+def get_my_events(email):
+    try:
+        initialize_firebase()
+        db = firestore.client()
+        events_ref = db.collection("events").where("createdByEmail", "==", email).stream()
+
+        events = []
+        for event in events_ref:
+            events.append(event.to_dict())
+
+        return events
+    except Exception as e:
+        print(f"Error fetching events by user: {str(e)}")
+        return []

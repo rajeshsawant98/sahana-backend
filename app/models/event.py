@@ -1,17 +1,17 @@
-from pydantic import BaseModel
+from pydantic import BaseModel , Field
 from typing import List, Optional
 from datetime import datetime
 
 class EventCreate(BaseModel):
-    event_name: str
+    eventName: str
     location: dict
-    start_time: datetime
-    duration: int  # Duration in minutes
+    startTime: str  # Should be in ISO format (e.g., "2025-02-01T15:30:00Z")
+    duration: int = Field(..., gt=0)
     categories: List[str]
-    is_online: bool
-    link_to_join: Optional[str] = None  # Optional for now, will be used for Zoom link in future
-    picture: Optional[str] = None  # URL or path to picture if available
-    event_creator_name: str
-    event_creator_email: str
-    lat: float = None  # Latitude
-    lng: float = None  # Longitude
+    isOnline: Optional[bool] = False
+    joinLink: Optional[str] = None
+    imageURL: Optional[str] = None
+    createdBy: str  # User ID or email of the event creator
+    createdByEmail: str
+    createdAt: Optional[str] = None
+    description: Optional[str] = None
