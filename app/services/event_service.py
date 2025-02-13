@@ -111,3 +111,24 @@ def get_my_events(email):
     except Exception as e:
         print(f"Error fetching events by user: {str(e)}")
         return []
+
+# RSVP to event
+def rsvp_to_event(event_id, email):
+    try:
+        initialize_firebase()
+        db = firestore.client()
+        event_ref = db.collection("events").document(event_id)
+        event = event_ref.get()
+
+        if event.exists:
+            rsvp_list = event.to_dict().get("rsvpList", [])
+            rsvp_list.append(email)
+            event_ref.update({"rsvpList": rsvp_list})
+            print(f"User '{email}' RSVP'd to event '{event_id}'")
+            return True
+        else:
+            print(f"No event found with ID: {event_id}")
+            return False
+    except Exception as e:
+        print(f"Error RSVP'ing to event: {str(e)}")
+        return False

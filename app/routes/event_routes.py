@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException , Depends
 from pydantic import BaseModel , Field
 from typing import List, Optional
-from app.services.event_service import create_event, get_all_events, get_event_by_id, update_event , get_my_events
+from app.services.event_service import create_event, get_all_events, get_event_by_id, update_event , rsvp_to_event
 from app.auth.jwt_utils import get_current_user
 from app.models.event import event as EventCreateRequest
 
@@ -41,3 +41,12 @@ async def modify_event(event_id: str, update_data: dict):
 
 # Delete event
 
+
+#RSVP to event
+@event_router.post("/{event_id}/rsvp")
+async def event_rsvp(event_id: str, current_user: dict = Depends(get_current_user)):
+    email = current_user["email"]
+    success = rsvp_to_event(event_id, email)
+    if success:
+        return {"message": "RSVP successful"}
+    raise HTTPException(status_code=500, detail="Failed to RSVP")
