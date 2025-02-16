@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth import auth_router  # Import the auth router
 from app.routes.event_routes import event_router  # Import the event router
 import uvicorn
+import os
 
 app = FastAPI()
 
