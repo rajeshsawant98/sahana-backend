@@ -40,7 +40,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 async def google_login(request: GoogleLoginRequest):
     try:
         token = request.token
-        client_id = "505025857168-olhtcsvr2pmpu84k0gb25rkh61qksbm8.apps.googleusercontent.com"
+        client_id = "856426602401-1745mq5b7mhp9norpftmi77sv515jfbh.apps.googleusercontent.com"
 
         id_info = id_token.verify_oauth2_token(token, Request(), client_id)
 
