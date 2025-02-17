@@ -8,7 +8,6 @@ load_dotenv()
 
 def get_secret():
     """Fetch secret from Google Secret Manager when running in Cloud Run"""
-    print("Ashutosh getting google credentials from", os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):  
         # If GOOGLE_APPLICATION_CREDENTIALS is already set, we are running locally
         print("Running locally, using existing credentials.")
