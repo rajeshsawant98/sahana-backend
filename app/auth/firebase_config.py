@@ -6,7 +6,7 @@ from firebase_admin import credentials, firestore
 from fastapi import HTTPException
 
 # Load environment variables from .env
-load_dotenv()
+load_dotenv(".env")
 
 # Get the credential path from the environment
 firebase_cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
