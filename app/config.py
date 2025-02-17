@@ -4,10 +4,11 @@ from google.cloud import secretmanager
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (for local development)
-load_dotenv()
+load_dotenv(".env")
 
 def get_secret():
     """Fetch secret from Google Secret Manager when running in Cloud Run"""
+    print("Ashutosh getting google credentials from", os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):  
         # If GOOGLE_APPLICATION_CREDENTIALS is already set, we are running locally
         print("Running locally, using existing credentials.")
@@ -20,6 +21,7 @@ def get_secret():
 
     response = client.access_secret_version(name=secret_name)
     secret_value = response.payload.data.decode("UTF-8")
+    
 
     return json.loads(secret_value)  
 
