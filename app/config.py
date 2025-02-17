@@ -4,7 +4,7 @@ from google.cloud import secretmanager
 from dotenv import load_dotenv
 
 # Load environment variables from .env file (for local development)
-load_dotenv(".env")
+load_dotenv()
 
 def get_secret():
     """Fetch secret from Google Secret Manager when running in Cloud Run"""
