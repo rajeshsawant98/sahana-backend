@@ -11,11 +11,6 @@ COPY . .
 RUN pip install --no-cache-dir -r requirements.txt
 
 
-# Create a script to export environment variables
-RUN echo "export \$(grep -v '^#' .env | xargs)" > /app/export_env.sh
-RUN chmod +x /app/export_env.sh
-
-
 # Expose the correct port
 EXPOSE 8080
 
