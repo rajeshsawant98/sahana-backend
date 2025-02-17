@@ -28,7 +28,7 @@ jobs:
 
       - name: Build and Push Docker Image
         run: |
-          docker build -t gcr.io/sahana-deaf0/sahana-backend .
+          docker buildx build --platform linux/amd64 -t gcr.io/sahana-deaf0/sahana-backend .
           docker push gcr.io/sahana-deaf0/sahana-backend
 
       - name: Deploy to Cloud Run
