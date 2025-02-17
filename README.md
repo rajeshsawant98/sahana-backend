@@ -50,3 +50,11 @@ Traceback (most recent call last):
   File "/app/app/config.py", line 37, in <module>
     with open(firebase_cred_path, "w") as f:
 TypeError: expected str, bytes or os.PathLike object, not NoneType
+
+
+gcloud run deploy sahana-backend \  --image gcr.io/sahana-deaf0/sahana-backend \
+  --platform managed \
+  --region us-west1 \
+  --allow-unauthenticated \
+  --set-env-vars=FIREBASE_CRED_SECRET=firebase_cred \
+  --set-env-vars=FIREBASE_CRED_PATH=/tmp/firebase_cred.json

@@ -38,3 +38,4 @@ jobs:
             --platform managed \
             --region us-west1 \
             --allow-unauthenticated
+            
