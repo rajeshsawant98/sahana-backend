@@ -16,7 +16,9 @@ def get_secret():
     print("Running on Cloud Run, fetching secret from Secret Manager.")
     print("Hello World")
     client = secretmanager.SecretManagerServiceClient()
-    secret_name = f"projects/sahana-deaf0/secrets/{os.getenv('FIREBASE_CRED_SECRET')}/versions/latest"
+    # secret_name = f"projects/sahana-deaf0/secrets/{os.getenv('FIREBASE_CRED_SECRET')}/versions/latest"
+    secret_name = f"projects/sahana-deaf0/secrets/firebase_cred/versions/latest"
+    
 
     response = client.access_secret_version(name=secret_name)
     secret_value = response.payload.data.decode("UTF-8")

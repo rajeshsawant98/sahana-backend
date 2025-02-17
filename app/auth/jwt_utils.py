@@ -11,6 +11,8 @@ load_dotenv()
 # Get secret key from environment
 SECRET_KEY = str(os.getenv("JWT_SECRET_KEY", "").strip())
 
+print("JWT Secret Key", SECRET_KEY)
+
 ALGORITHM = "HS256"  # Can be adjusted if you choose a different algorithm in the future
 
 # OAuth2PasswordBearer to extract token from Authorization header
