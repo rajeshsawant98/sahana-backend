@@ -11,7 +11,6 @@ load_dotenv()
 # Get secret key from environment
 SECRET_KEY = str(os.getenv("JWT_SECRET_KEY", "").strip())
 
-print("JWT Secret Key", SECRET_KEY)
 
 ALGORITHM = "HS256"  # Can be adjusted if you choose a different algorithm in the future
 
@@ -20,7 +19,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # Function to generate JWT token
 def create_access_token(data: dict, expires_in_minutes: int = 60) -> str:
-    print(f"SECRET_KEY: {SECRET_KEY} - Type: {type(SECRET_KEY)}")
     expiration_time = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
     token = jwt.encode(
         {"data": data, "exp": expiration_time},
@@ -34,7 +32,6 @@ from datetime import datetime
 
 def verify_access_token(token: str):
     try:
-        print(f"SECRET_KEY: {SECRET_KEY} - Type: {type(SECRET_KEY)}")
         decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         # Convert the "exp" field to a datetime object
         expiration_time = datetime.utcfromtimestamp(decoded_token["exp"])

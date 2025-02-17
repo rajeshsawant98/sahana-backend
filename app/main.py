@@ -18,7 +18,7 @@ firebase_admin.initialize_app(cred)
 # Add CORS middleware to handle cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000" , "https://sahana-drab.vercel.app"],  # React app URL
+    allow_origins=["*"],  # React app URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

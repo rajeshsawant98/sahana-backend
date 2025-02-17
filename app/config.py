@@ -7,8 +7,6 @@ from dotenv import load_dotenv
 BASEDIR = os.path.abspath(os.path.dirname(__file__))
 load_dotenv()
 
-print("Ashutsoh Latest Log")
-
 def get_secret():
     """Fetch secret from Google Secret Manager when running in Cloud Run"""
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):  
@@ -17,7 +15,6 @@ def get_secret():
         return None  
 
     print("Running on Cloud Run, fetching secret from Secret Manager.")
-    print("Hello World")
     client = secretmanager.SecretManagerServiceClient()
     # secret_name = f"projects/sahana-deaf0/secrets/{os.getenv('FIREBASE_CRED_SECRET')}/versions/latest"
     secret_name = f"projects/sahana-deaf0/secrets/firebase_cred/versions/latest"
