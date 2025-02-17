@@ -4,3 +4,4 @@ __pycache__/
 *.sqlite
 .env
 .gcloudignore
+firebase_cred.json
