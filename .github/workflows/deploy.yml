@@ -38,4 +38,4 @@ jobs:
             --platform managed \
             --region us-west1 \
             --allow-unauthenticated \
-            --set-env-vars FIREBASE_CRED_SECRET=${{ secrets.FIREBASE_CRED_SECRET }},FIREBASE_CRED_PATH=${{ secrets.FIREBASE_CRED_PATH }},JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }},GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }},JWT_REFRESH_SECRET_KEY=${{ secrets.JWT_REFRESH_SECRET_KEY }}
+            --set-env-vars FIREBASE_CRED_SECRET=${{ secrets.FIREBASE_CRED_SECRET }},FIREBASE_CRED_PATH=${{ secrets.FIREBASE_CRED_PATH }},JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }},JWT_REFRESH_SECRET_KEY=${{ secrets.JWT_REFRESH_SECRET_KEY }},GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
