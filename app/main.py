@@ -14,11 +14,14 @@ app = FastAPI()
 cred = credentials.Certificate(config.firebase_cred_path)
 firebase_admin.initialize_app(cred)
 
-
+origins = [
+    "https://sahana-drab.vercel.app",  # Deployed frontend
+    "http://localhost:3000",  # Local React frontend
+]
 # Add CORS middleware to handle cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # React app URL
+    allow_origins=origins,  # React app URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
