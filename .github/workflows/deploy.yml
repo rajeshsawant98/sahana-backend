@@ -18,7 +18,7 @@ jobs:
         id: auth
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY || '' }}
+          credentials_json: ${{ secrets.GCP_SA_KEY || ''}}
 
       - name: Set up Google Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
@@ -38,4 +38,4 @@ jobs:
             --platform managed \
             --region us-west1 \
             --allow-unauthenticated \
-            --set-env-vars FIREBASE_CRED_SECRET=${{ secrets.FIREBASE_CRED_SECRET }},FIREBASE_CRED_PATH=${{ secrets.FIREBASE_CRED_PATH }},JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }},GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+            --set-env-vars FIREBASE_CRED_SECRET=${{ secrets.FIREBASE_CRED_SECRET }},FIREBASE_CRED_PATH=${{ secrets.FIREBASE_CRED_PATH }},JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }},GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }},JWT_SECRET_REFRESH_KEY=${{ secrets.JWT_SECRET_REFRESH_KEY }}

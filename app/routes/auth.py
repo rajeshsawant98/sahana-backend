@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request
 from app.auth.firebase_config import store_or_update_user_data, store_user_data, store_user_with_password, verify_user_password, get_user_by_email
-from app.auth.jwt_utils import create_access_token, get_current_user  # Import get_current_user from jwt_utils
+from app.auth.jwt_utils import create_access_token, get_current_user, create_refresh_token, verify_refresh_token # Import get_current_user from jwt_utils
 from fastapi.security import OAuth2PasswordBearer
 from app.services.event_service import get_my_events
 
@@ -32,6 +32,9 @@ class UpdateProfileRequest(BaseModel):
     
 class UpdateInterestsRequest(BaseModel):
     interests: list
+    
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -53,8 +56,9 @@ async def google_login(request: GoogleLoginRequest):
 
         store_user_data(user_data)
         access_token = create_access_token(data={"email": user_data["email"]})
-
-        return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer" , "email": user_data["email"]}
+        refresh_token = create_refresh_token(data={"email": user_data["email"]})  # Generate refresh token
+        
+        return {"message": "User authenticated successfully", "access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer" , "email": user_data["email"]}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail="Google login failed")
@@ -64,10 +68,11 @@ async def google_login(request: GoogleLoginRequest):
 async def normal_login(request: NormalLoginRequest):
     user = get_user_by_email(request.email)
     if not user or not verify_user_password(request.email, request.password):
-        raise HTTPException(status_code=400, detail="Invalid credentials")
-
+        raise HTTPException(status_code=400, detail="Invalid credentials") 
     access_token = create_access_token(data={"email": user["email"]})
-    return {"message": "User authenticated successfully", "access_token": access_token, "token_type": "bearer", "email": user["email"]}
+    refresh_token = create_refresh_token(data={"email": user["email"]})  # Generate refresh token
+
+    return {"message": "User authenticated successfully", "access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "email": user["email"]}
 
 @auth_router.post("/register")
 async def register_user(request: RegisterRequest):
@@ -76,14 +81,28 @@ async def register_user(request: RegisterRequest):
 
     store_user_with_password(request.email, request.password, request.name)
     access_token = create_access_token(data={"email": request.email})
+    refresh_token = create_refresh_token(data={"email": request.email})  # Generate refresh token
 
     
     return {
         "message": "User registered successfully",
         "access_token": access_token,
+        "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": request.email
     }
+
+# Refresh Token
+@auth_router.post("/refresh")
+async def refresh_token(request: RefreshRequest):
+    refresh_token = request.refresh_token
+    if not refresh_token:
+        raise HTTPException(status_code=400, detail="Missing refresh token")
+    decoded_data = verify_refresh_token(refresh_token)  # Verify refresh token
+    print("decoded data", decoded_data)
+    new_access_token = create_access_token(data={"email": decoded_data["data"]["email"]})
+    print("Token refreshed")
+    return {"access_token": new_access_token, "token_type": "bearer"}
 
 # Protected route example that requires authentication
 @auth_router.get("/me")

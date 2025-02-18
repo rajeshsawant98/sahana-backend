@@ -8,17 +8,17 @@ from fastapi.security import OAuth2PasswordBearer
 # Load environment variables
 load_dotenv()
 
-# Get secret key from environment
+# Get secret keys from environment
 SECRET_KEY = str(os.getenv("JWT_SECRET_KEY", "").strip())
+REFRESH_SECRET_KEY = str(os.getenv("JWT_REFRESH_SECRET_KEY", "").strip())
 
-
-ALGORITHM = "HS256"  # Can be adjusted if you choose a different algorithm in the future
+ALGORITHM = "HS256"
 
 # OAuth2PasswordBearer to extract token from Authorization header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
-# Function to generate JWT token
-def create_access_token(data: dict, expires_in_minutes: int = 60) -> str:
+# Function to generate Access Token
+def create_access_token(data: dict, expires_in_minutes: int = 1) -> str:
     expiration_time = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
     token = jwt.encode(
         {"data": data, "exp": expiration_time},
@@ -27,15 +27,23 @@ def create_access_token(data: dict, expires_in_minutes: int = 60) -> str:
     )
     return token
 
-# Function to validate JWT token
-from datetime import datetime
+# Function to generate Refresh Token
+def create_refresh_token(data: dict, expires_in_days: int = 7) -> str:
+    expiration_time = datetime.utcnow() + timedelta(days=expires_in_days)
+    token = jwt.encode(
+        {"data": data, "exp": expiration_time},
+        REFRESH_SECRET_KEY,
+        algorithm=ALGORITHM
+    )
+    
+    return token
 
+# Function to validate Access Token
 def verify_access_token(token: str):
     try:
         decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        # Convert the "exp" field to a datetime object
-        expiration_time = datetime.utcfromtimestamp(decoded_token["exp"])
-        if expiration_time < datetime.utcnow():
+        print(decoded_token)
+        if datetime.utcfromtimestamp(decoded_token["exp"]) < datetime.utcnow():
             return None
         return decoded_token
     except jwt.ExpiredSignatureError:
@@ -43,25 +51,32 @@ def verify_access_token(token: str):
     except jwt.InvalidTokenError:
         return None
 
-# Token Required Dependency to protect routes
-def validate_token(token: str = Depends(oauth2_scheme)):
+# Function to validate Refresh Token
+def verify_refresh_token(token: str):
     try:
-        payload = verify_access_token(token)
-        return payload
-    except HTTPException as e:
-        raise e
+        decoded_token = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
+        if datetime.utcfromtimestamp(decoded_token["exp"]) < datetime.utcnow():
+            return None
+        return decoded_token
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+# Token Required Dependency
+def validate_token(token: str = Depends(oauth2_scheme)):
+    payload = verify_access_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
 
 # Get Current User from Token
 def get_current_user(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = verify_access_token(token)
-        
-        if payload is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Could not validate credentials",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        return payload.get("data")
-    except HTTPException as e:
-        raise e
+    payload = verify_access_token(token)
+    if payload is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return payload.get("data")
