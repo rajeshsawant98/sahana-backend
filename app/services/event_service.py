@@ -96,6 +96,26 @@ def update_event(event_id, update_data):
     except Exception as e:
         print(f"Error updating event: {str(e)}")
         return False
+
+# Delete event
+def delete_event(event_id):
+    try:
+        initialize_firebase()
+        db = firestore.client()
+        event_ref = db.collection("events").document(event_id)
+
+        if event_ref.get().exists:
+            event_ref.delete()
+            print(f"Event '{event_id}' deleted successfully!")
+            return True
+        else:
+            print(f"No event found with ID: {event_id}")
+            return False
+    except Exception as e:
+        print(f"Error deleting event: {str(e)}")
+        return False
+    
+# Fetch events created by a specific user
     
 def get_my_events(email):
     try:
@@ -132,3 +152,40 @@ def rsvp_to_event(event_id, email):
     except Exception as e:
         print(f"Error RSVP'ing to event: {str(e)}")
         return False
+
+# Fetch RSVP list for an event
+
+def get_rsvp_list(event_id):
+    try:
+        initialize_firebase()
+        db = firestore.client()
+        event_ref = db.collection("events").document(event_id)
+        event = event_ref.get()
+
+        if event.exists:
+            rsvp_list = event.to_dict().get("rsvpList", [])
+            return rsvp_list
+        else:
+            print(f"No event found with ID: {event_id}")
+            return []
+    except Exception as e:
+        print(f"Error fetching RSVP list: {str(e)}")
+        return []
+    
+    
+#Fetch events RSVP'd by a specific user
+def get_user_rsvps(email):
+    try:
+        initialize_firebase()
+        db = firestore.client()
+        events_ref = db.collection("events").where("rsvpList", "array_contains", email).stream()
+
+        events = []
+        for event in events_ref:
+            events.append(event.to_dict())
+
+        return events
+    except Exception as e:
+        print(f"Error fetching user RSVPs: {str(e)}")
+        return []
+    
