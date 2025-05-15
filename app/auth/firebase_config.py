@@ -20,6 +20,12 @@ def initialize_firebase():
         cred = credentials.Certificate(firebase_cred_path)
         firebase_admin.initialize_app(cred)
 
+def get_firestore_client():
+    if not firebase_admin._apps:
+        initialize_firebase()
+    return firestore.client()
+
+
 # Store user data in Firestore (Google Login or Normal Login)
 def store_user_data(user_data):
     try:

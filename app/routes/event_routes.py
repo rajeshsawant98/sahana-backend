@@ -1,9 +1,11 @@
-from fastapi import APIRouter, HTTPException , Depends
+from fastapi import APIRouter, HTTPException , Depends , Body
 from pydantic import BaseModel , Field
 from typing import List, Optional
 from app.services.event_service import *
 from app.auth.jwt_utils import get_current_user
 from app.models.event import event as EventCreateRequest
+from app.services.events_retrival_service import fetch_ticketmaster_events
+
 
 event_router = APIRouter()
 
@@ -90,3 +92,18 @@ async def fetch_user_rsvps(current_user: dict = Depends(get_current_user)):
         return {"message": "RSVP’d events fetched", "events": events}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Fetch events from Ticketmaster
+@event_router.post("/fetch-ticketmaster-events")
+def fetch_external_events(payload: dict = Body(...)):
+    city = payload.get("city")
+    state = payload.get("state")
+
+    if not city or not state:
+        raise HTTPException(status_code=400, detail="City and state are required.")
+
+    events = fetch_ticketmaster_events(city, state)
+    return {
+        "message": f"{len(events)} events fetched and stored for {city}, {state}.",
+        "sample": events[:3]
+    }

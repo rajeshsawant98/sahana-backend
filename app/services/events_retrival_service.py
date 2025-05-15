@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from uuid import uuid4
 from typing import Dict, List
+from app.db.firestore_client import save_event_to_firestore
 
 load_dotenv()  # Load .env variables
 
@@ -92,6 +93,7 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[Dict]:
     for event in raw_events:
         try:
             cleaned = ticketmaster_to_sahana_format(event)
+            save_event_to_firestore(cleaned)
             events.append(cleaned)
         except Exception as e:
             print(f"[WARN] Skipping event due to error: {e}")
