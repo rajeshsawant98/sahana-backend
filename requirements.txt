@@ -11,3 +11,6 @@ python-dotenv
 passlib
 bcrypt
 google-cloud-secret-manager
+beautifulsoup4
+requests
+openai
