@@ -153,8 +153,29 @@ def rsvp_to_event(event_id, email):
         print(f"Error RSVP'ing to event: {str(e)}")
         return False
 
-# Fetch RSVP list for an event
+# Cancel RSVP
+def cancel_user_rsvp(event_id: str, user_email: str):
+    try:
+        initialize_firebase()
+        db = firestore.client()
 
+        event_ref = db.collection("events").document(event_id)
+
+        # Remove from rsvpList array
+        event_ref.update({
+            "rsvpList": firestore.ArrayRemove([user_email])
+        })
+
+        # Optionally delete RSVP subdocument
+        rsvp_doc = event_ref.collection("rsvps").document(user_email)
+        rsvp_doc.delete()
+
+        return {"message": "RSVP cancelled successfully"}
+    except Exception as e:
+        raise Exception(f"Error cancelling RSVP: {str(e)}")
+    
+
+# Fetch RSVP list for an event
 def get_rsvp_list(event_id):
     try:
         initialize_firebase()

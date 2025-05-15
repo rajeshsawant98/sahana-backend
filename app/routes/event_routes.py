@@ -57,6 +57,16 @@ async def event_rsvp(event_id: str, current_user: dict = Depends(get_current_use
         return {"message": "RSVP successful"}
     raise HTTPException(status_code=500, detail="Failed to RSVP")
 
+#Cancel RSVP
+@event_router.delete("/{event_id}/rsvp")
+async def cancel_rsvp(event_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        email = current_user["email"]
+        result = cancel_user_rsvp(event_id, email)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Fetch events created by the user
 @event_router.get("/me/created")
 async def fetch_my_events(current_user: dict = Depends(get_current_user)):
