@@ -84,7 +84,7 @@ def verify_user_password(email, password):
         user_data = user.to_dict()
 
         # Ensure the password field exists
-        if "password" not in user_data:
+        if not user_data or "password" not in user_data:
             print(f"Password missing for user: {email}")
             return False
 
@@ -144,15 +144,15 @@ def update_user_data(user_data: dict, user_email: str):
             user_ref = db.collection("users").document(user.id)  # Get the document reference using the document ID
             # Update user profile with the new data
             user_ref.update({
-                "name": user_data.get("name", user.to_dict().get("name", "")),  # Update name if provided, else keep the old name
-                "profile_picture": user_data.get("profile_picture", user.to_dict().get("profile_picture", "")),  # Update profile picture if provided
-                "interests": user_data.get("interests", user.to_dict().get("interests", [])),  # Update interests if provided, else keep the old interests
-                "profession": user_data.get("profession", user.to_dict().get("profession", "")),
-                "location": user_data.get("location", user.to_dict().get("location")),
-                "bio": user_data.get("bio", user.to_dict().get("bio", "")),
-                "phoneNumber": user_data.get("phoneNumber", user.to_dict().get("phoneNumber","")),
-                "location": user_data.get("location", user.to_dict().get("location","")),
-                "birthdate": user_data.get("birthdate", user.to_dict().get("birthdate", ""))
+                # Safely get the old user data as a dict, or use an empty dict if None
+                "name": user_data.get("name", (user.to_dict() or {}).get("name", "")),  # Update name if provided, else keep the old name
+                "profile_picture": user_data.get("profile_picture", (user.to_dict() or {}).get("profile_picture", "")),  # Update profile picture if provided
+                "interests": user_data.get("interests", (user.to_dict() or {}).get("interests", [])),  # Update interests if provided, else keep the old interests
+                "profession": user_data.get("profession", (user.to_dict() or {}).get("profession", "")),
+                "location": user_data.get("location", (user.to_dict() or {}).get("location", "")),
+                "bio": user_data.get("bio", (user.to_dict() or {}).get("bio", "")),
+                "phoneNumber": user_data.get("phoneNumber", (user.to_dict() or {}).get("phoneNumber", "")),
+                "birthdate": user_data.get("birthdate", (user.to_dict() or {}).get("birthdate", ""))
             })
             print(f"User profile updated for: {user_email}")
         else:

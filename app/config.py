@@ -33,11 +33,13 @@ if firebase_cred_path is None:
     firebase_cred_path = os.getenv("FIREBASE_CRED_PATH")
     firebase_creds = get_secret()
     
-    if firebase_creds:  # Only write if we fetched from Secret Manager
+    if firebase_creds and firebase_cred_path is not None:  # Only write if we fetched from Secret Manager and path is valid
         with open(firebase_cred_path, "w") as f:
             json.dump(firebase_creds, f)
 
 # Set the environment variable for Firebase SDK
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = firebase_cred_path
-
-print(f"Using Firebase credentials from: {firebase_cred_path}")
+if firebase_cred_path is not None:
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = firebase_cred_path
+    print(f"Using Firebase credentials from: {firebase_cred_path}")
+else:
+    print("Firebase credentials path is not set.")

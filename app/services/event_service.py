@@ -3,6 +3,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
+from google.cloud.firestore_v1 import ArrayRemove
 
 # Load environment variables
 load_dotenv()
@@ -149,7 +150,11 @@ def rsvp_to_event(event_id, email):
         event = event_ref.get()
 
         if event.exists:
-            rsvp_list = event.to_dict().get("rsvpList", [])
+            event_dict = event.to_dict()
+            if event_dict is not None:
+                rsvp_list = event_dict.get("rsvpList", [])
+            else:
+                rsvp_list = []
             rsvp_list.append(email)
             event_ref.update({"rsvpList": rsvp_list})
             print(f"User '{email}' RSVP'd to event '{event_id}'")
@@ -169,9 +174,8 @@ def cancel_user_rsvp(event_id: str, user_email: str):
 
         event_ref = db.collection("events").document(event_id)
 
-        # Remove from rsvpList array
         event_ref.update({
-            "rsvpList": firestore.ArrayRemove([user_email])
+            "rsvpList": ArrayRemove([user_email])
         })
 
         # Optionally delete RSVP subdocument
@@ -192,7 +196,11 @@ def get_rsvp_list(event_id):
         event = event_ref.get()
 
         if event.exists:
-            rsvp_list = event.to_dict().get("rsvpList", [])
+            event_dict = event.to_dict()
+            if event_dict is not None:
+                rsvp_list = event_dict.get("rsvpList", [])
+            else:
+                rsvp_list = []
             return rsvp_list
         else:
             print(f"No event found with ID: {event_id}")
