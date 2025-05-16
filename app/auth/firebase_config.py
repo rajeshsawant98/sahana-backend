@@ -38,7 +38,8 @@ def store_user_data(user_data):
         user_ref.set({
             "name": user_data["name"],
             "email": user_data["email"],
-            "profile_picture": user_data["profile_picture"]
+            "profile_picture": user_data["profile_picture"],
+            "role": "user" 
         }, merge=True)
         print(f"User data stored for: {user_data['email']}")
     except Exception as e:
@@ -59,7 +60,8 @@ def store_user_with_password(email, password, name):
         user_ref.set({
             "name": name,
             "email": email,
-            "password": hashed_password
+            "password": hashed_password,
+            "role": "user" 
         })
         print(f"User with email {email} stored successfully")
     except Exception as e:
@@ -106,7 +108,9 @@ def get_user_by_email(email: str):
         db = firestore.client()
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
-        query = users_ref.where(field_path="email",op_string= "==",value= email)
+        
+        query = users_ref.where("email", "==", email)
+    #   query = users_ref.where(field_path="email",op_string= "==",value= email)
         results = query.stream()
 
         # Check if there are any results from the query
@@ -129,7 +133,8 @@ def update_user_data(user_data: dict, user_email: str):
 
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
-        query = users_ref.where(field_path="email", op_string="==", value=user_email)
+        query = users_ref.where("email", "==", user_email)
+#       query = users_ref.where(field_path="email", op_string="==", value=user_email)
         results = query.stream()
 
         # Get the first result (if any)
@@ -173,13 +178,8 @@ def store_or_update_user_data(user_data):
             # User exists, update the profile
             update_user_data(user_data, user_email)
         else:
-            # User does not exist, create a new profile
-            user_ref = db.collection("users").document(user_email)
-            user_ref.set({
-                "name": user_data["name"],
-                "email": user_email,
-                "profile_picture": user_data["profile_picture"]
-            })
+            store_user_data(user_data)
+
             print(f"New user profile created for: {user_email}")
 
     except Exception as e:

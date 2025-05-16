@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException , Depends , Body
+from fastapi import APIRouter, HTTPException , Depends , Body, Query
 from pydantic import BaseModel , Field
 from typing import List, Optional
 from app.services.event_service import *
 from app.auth.jwt_utils import get_current_user
 from app.models.event import event as EventCreateRequest
-from app.services.events_retrival_service import fetch_ticketmaster_events
+from app.services.events_retrival_service import get_ticketmaster_events, fetch_ticketmaster_events
+from app.auth.roles import admin_only
 
 
 event_router = APIRouter()
@@ -95,7 +96,7 @@ async def fetch_user_rsvps(current_user: dict = Depends(get_current_user)):
 
 # Fetch events from Ticketmaster
 @event_router.post("/fetch-ticketmaster-events")
-def fetch_external_events(payload: dict = Body(...)):
+def fetch_external_events(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
     city = payload.get("city")
     state = payload.get("state")
 
@@ -107,3 +108,21 @@ def fetch_external_events(payload: dict = Body(...)):
         "message": f"{len(events)} events fetched and stored for {city}, {state}.",
         "sample": events[:3]
     }
+
+
+@event_router.get("/location/external")
+def list_external_events(
+    city: str = Query(...),
+    state: str = Query(...),    
+    current_user: dict = Depends(get_current_user)
+):
+    print(f"📡 Incoming query for city={city}, state={state}")
+    events = get_ticketmaster_events(city, state)
+    print(f"✅ Fetched {len(events)} events from Firestore")
+    
+    if not events:
+        # Comment this out temporarily to debug
+        # raise HTTPException(status_code=404, detail="Event not found")
+        return {"events": [], "count": 0}
+    
+    return {"events": events, "count": len(events)}

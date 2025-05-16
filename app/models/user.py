@@ -12,3 +12,4 @@ class User(BaseModel):
     phoneNumber: Optional[str] = None
     location: Optional[dict] = None
     birthdate: Optional[str] = None
+    role: Optional[str] = "user"  # Default role is 'user'

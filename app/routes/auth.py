@@ -1,15 +1,24 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request
-from app.auth.firebase_config import store_or_update_user_data, store_user_data, store_user_with_password, verify_user_password, get_user_by_email
-from app.auth.jwt_utils import create_access_token, get_current_user, create_refresh_token, verify_refresh_token # Import get_current_user from jwt_utils
-from fastapi.security import OAuth2PasswordBearer
+from app.auth.firebase_config import (
+    store_or_update_user_data,
+    store_user_with_password,
+    verify_user_password,
+    get_user_by_email
+)
+from app.auth.jwt_utils import (
+    create_access_token,
+    create_refresh_token,
+    verify_refresh_token,
+    get_current_user
+)
 from app.services.event_service import get_my_events
+import os
 
 auth_router = APIRouter()
 
-# Define the data models for incoming requests
 class GoogleLoginRequest(BaseModel):
     token: str
 
@@ -27,23 +36,21 @@ class UpdateProfileRequest(BaseModel):
     profession: str
     bio: str
     phoneNumber: str
-    location: object
+    location: dict
     birthdate: str
-    
+
 class UpdateInterestsRequest(BaseModel):
     interests: list
-    
+
 class RefreshRequest(BaseModel):
     refresh_token: str
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Google Login
 @auth_router.post("/google")
 async def google_login(request: GoogleLoginRequest):
     try:
         token = request.token
-        client_id = "856426602401-1745mq5b7mhp9norpftmi77sv515jfbh.apps.googleusercontent.com"
+        client_id = os.getenv("GOOGLE_CLIENT_ID")
 
         id_info = id_token.verify_oauth2_token(token, Request(), client_id)
 
@@ -54,11 +61,18 @@ async def google_login(request: GoogleLoginRequest):
             "profile_picture": id_info.get("picture")
         }
 
-        store_user_data(user_data)
+        store_or_update_user_data(user_data)
+
         access_token = create_access_token(data={"email": user_data["email"]})
-        refresh_token = create_refresh_token(data={"email": user_data["email"]})  # Generate refresh token
-        
-        return {"message": "User authenticated successfully", "access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer" , "email": user_data["email"]}
+        refresh_token = create_refresh_token(data={"email": user_data["email"]})
+
+        return {
+            "message": "User authenticated successfully",
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "token_type": "bearer",
+            "email": user_data["email"]
+        }
 
     except Exception as e:
         raise HTTPException(status_code=400, detail="Google login failed")
@@ -69,10 +83,18 @@ async def normal_login(request: NormalLoginRequest):
     user = get_user_by_email(request.email)
     if not user or not verify_user_password(request.email, request.password):
         raise HTTPException(status_code=400, detail="Invalid credentials") 
-    access_token = create_access_token(data={"email": user["email"]})
-    refresh_token = create_refresh_token(data={"email": user["email"]})  # Generate refresh token
 
-    return {"message": "User authenticated successfully", "access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer", "email": user["email"]}
+    access_token = create_access_token(data={"email": user["email"]})
+    refresh_token = create_refresh_token(data={"email": user["email"]})
+
+    return {
+        "message": "User authenticated successfully",
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "email": user["email"],
+        "role": user.get("role", "user")
+    }
 
 @auth_router.post("/register")
 async def register_user(request: RegisterRequest):
@@ -81,35 +103,35 @@ async def register_user(request: RegisterRequest):
 
     store_user_with_password(request.email, request.password, request.name)
     access_token = create_access_token(data={"email": request.email})
-    refresh_token = create_refresh_token(data={"email": request.email})  # Generate refresh token
+    refresh_token = create_refresh_token(data={"email": request.email})
 
-    
     return {
         "message": "User registered successfully",
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
-        "email": request.email
+        "email": request.email,
+        "role": "user"
     }
 
 # Refresh Token
 @auth_router.post("/refresh")
 async def refresh_token(request: RefreshRequest):
-    refresh_token = request.refresh_token
-    if not refresh_token:
+    if not request.refresh_token:
         raise HTTPException(status_code=400, detail="Missing refresh token")
-    decoded_data = verify_refresh_token(refresh_token)  # Verify refresh token
-    print("decoded data", decoded_data)
+
+    decoded_data = verify_refresh_token(request.refresh_token)
     new_access_token = create_access_token(data={"email": decoded_data["data"]["email"]})
-    print("Token refreshed")
     return {"access_token": new_access_token, "token_type": "bearer"}
 
-# Protected route example that requires authentication
+# Get current user profile
 @auth_router.get("/me")
 async def get_profile(current_user: dict = Depends(get_current_user)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    user.pop("password", None)
 
     return {
         "email": user["email"],
@@ -120,36 +142,36 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
         "bio": user.get("bio", ""),
         "phoneNumber": user.get("phoneNumber", ""),
         "location": user.get("location", {}),
-        "birthdate": user.get("birthdate", "")
+        "birthdate": user.get("birthdate", ""),
+        "role": user.get("role", "user")
     }
-    
+
+# Update user profile
 @auth_router.put("/me")
 async def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(get_current_user)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Update the user's profile (you can extend this for other fields like profile_picture)
     user["name"] = request.name
     user["profession"] = request.profession
     user["bio"] = request.bio
     user["phoneNumber"] = request.phoneNumber
     user["birthdate"] = request.birthdate
-    user["location"] = request.location
-    store_or_update_user_data(user)  # Update in Firestore or your database
-
+    user["location"] = {
+        **user.get("location", {}),
+        **request.location
+    }
+    store_or_update_user_data(user)
     return {"message": "Profile updated successfully"}
 
+# Update user interests
 @auth_router.put("/me/interests")
 async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(get_current_user)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    print(user)
 
-    # Update the user's interests
     user["interests"] = request.interests
     store_or_update_user_data(user)
-    
-    return {"message": "User Interests updated successfully"}
-
+    return {"message": "User interests updated successfully"}

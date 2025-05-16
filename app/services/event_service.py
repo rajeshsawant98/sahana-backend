@@ -74,7 +74,15 @@ def get_event_by_id(event_id):
 
         if event.exists:
             return event.to_dict()
-        return None
+        
+         # If not found, try ticketmasterEvents collection
+        tm_doc_ref = db.collection("ticketmasterEvents").document(event_id)
+        tm_doc = tm_doc_ref.get()
+        
+        if tm_doc.exists:
+            return tm_doc.to_dict()
+        else:
+            return None
     except Exception as e:
         print(f"Error fetching event by ID: {str(e)}")
         return None
