@@ -16,7 +16,8 @@ firebase_admin.initialize_app(cred)
 
 origins = [
     "https://sahana-drab.vercel.app",  # Deployed frontend
-    "http://localhost:3000",  # Local React frontend
+    "http://localhost:3000", # Local React frontend
+    "http://localhost:5173",       # Vite local dev
 ]
 # Add CORS middleware to handle cross-origin requests
 app.add_middleware(
