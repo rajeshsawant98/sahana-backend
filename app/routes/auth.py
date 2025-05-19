@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request
-from app.auth.firebase_config import (
+from app.services.user_service import (
     store_or_update_user_data,
     store_user_with_password,
     verify_user_password,
@@ -121,6 +121,8 @@ async def refresh_token(request: RefreshRequest):
         raise HTTPException(status_code=400, detail="Missing refresh token")
 
     decoded_data = verify_refresh_token(request.refresh_token)
+    if not decoded_data or "data" not in decoded_data or "email" not in decoded_data["data"]:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
     new_access_token = create_access_token(data={"email": decoded_data["data"]["email"]})
     return {"access_token": new_access_token, "token_type": "bearer"}
 
@@ -158,10 +160,15 @@ async def update_profile(request: UpdateProfileRequest, current_user: dict = Dep
     user["bio"] = request.bio
     user["phoneNumber"] = request.phoneNumber
     user["birthdate"] = request.birthdate
+    existing_location = user.get("location")
+    if not isinstance(existing_location, dict):
+        existing_location = {}
+
     user["location"] = {
-        **user.get("location", {}),
+        **existing_location,
         **request.location
     }
+
     store_or_update_user_data(user)
     return {"message": "Profile updated successfully"}
 
