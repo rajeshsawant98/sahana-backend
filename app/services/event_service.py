@@ -227,5 +227,5 @@ def get_nearby_events(city: str, state: str) -> list[dict]:
     )
 
     events = [doc.to_dict() for doc in query.stream()]
-    print(f"📤 Found {len(events)} external events")
+    print(f"📤 Found {len(events)} nearby events")
     return events

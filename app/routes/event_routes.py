@@ -126,3 +126,20 @@ def list_external_events(
         return {"events": [], "count": 0}
     
     return {"events": events, "count": len(events)}
+
+@event_router.get("/location/nearby")
+def list_nearby_events(
+    city: str = Query(...),
+    state: str = Query(...),    
+    current_user: dict = Depends(get_current_user)
+):
+    print(f"📡 Incoming query for city={city}, state={state}")
+    events = get_nearby_events(city, state)
+    print(f"✅ Fetched {len(events)} events from Firestore")
+    
+    if not events:
+        # Comment this out temporarily to debug
+        # raise HTTPException(status_code=404, detail="Event not found")
+        return {"events": [], "count": 0}
+    
+    return {"events": events, "count": len(events)}
