@@ -60,7 +60,10 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
         "createdByEmail": "scraper@ticketmaster.com",
         "createdAt": datetime.utcnow().isoformat(),
         "description": event.get("info") or event.get("pleaseNote") or "No description available",
-        "rsvpList": []
+        "rsvpList": [],
+        "origin": "external",
+        "source": "ticketmaster",
+        "originalId": event.get("id"),
     }
 
 
@@ -140,20 +143,19 @@ def ingest_events_for_all_cities() -> dict:
         "details": summary
     }
 
-# Fetch events from Firestore This function retrieves events from Firestore based on the city and state provided.
-# It queries the "ticketmasterEvents" collection, filters by city and state, and returns a list of events.
-def get_ticketmaster_events(city: str, state: str) -> list[dict]:
+def get_external_events(city: str, state: str) -> list[dict]:
     db = get_firestore_client()
     print(f"📥 Querying for city: {city}, state: {state}")
-    
-    ref = db.collection("ticketmasterEvents")
+
+    ref = db.collection("events")
     query = (
-        ref.where("location.city", "==", city)
+        ref.where("origin", "==", "external")
+           .where("location.city", "==", city)
            .where("location.state", "==", state)
            .order_by("startTime")
            .limit(30)
     )
-    
+
     events = [doc.to_dict() for doc in query.stream()]
-    print(f"📤 Found {len(events)} events")
+    print(f"📤 Found {len(events)} external events")
     return events

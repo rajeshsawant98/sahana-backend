@@ -1,5 +1,8 @@
+
+
 from app.services.events_retrival_service import fetch_ticketmaster_events , get_unique_user_locations, ingest_events_for_all_cities
 import json
+from app.auth.firebase_config import get_firestore_client
 
 if __name__ == "__main__":
     # events = fetch_ticketmaster_events("Tempe", "AZ")
@@ -30,11 +33,51 @@ if __name__ == "__main__":
     #     print(f"State: {loc[1]}")
     #     print("-" * 60)
         
-    result = ingest_events_for_all_cities()
+    # result = ingest_events_for_all_cities()
 
-    print(f"\n✅ Ingestion Summary")
-    print(f"Total Events Saved   : {result['total_events']}")
-    print(f"Total Cities Processed: {result['processed_cities']}")
-    print("\nDetails:")
-    for detail in result["details"]:
-        print(f"• {detail}")
+    # print(f"\n✅ Ingestion Summary")
+    # print(f"Total Events Saved   : {result['total_events']}")
+    # print(f"Total Cities Processed: {result['processed_cities']}")
+    # print("\nDetails:")
+    # for detail in result["details"]:
+    #     print(f"• {detail}")
+    
+    # def backfill_user_events_metadata():
+    #     db = get_firestore_client()
+    #     events_ref = db.collection("events")
+
+    #     updated_count = 0
+    #     for doc in events_ref.stream():
+    #         data = doc.to_dict()
+
+    #         # Only update if missing 'origin' or 'source'
+    #         if "origin" not in data or "source" not in data:
+    #             updates = {
+    #                 "origin": data.get("origin", "community"),
+    #                 "source": data.get("source", "user")
+    #             }
+    #             events_ref.document(doc.id).update(updates)
+    #             updated_count += 1
+
+    #     print(f"✅ Backfilled {updated_count} user events with origin/source")
+    
+    # backfill= backfill_user_events_metadata()
+
+
+
+    def migrate_ticketmaster_events():
+        db = get_firestore_client()
+        old_ref = db.collection("ticketmasterEvents")
+        new_ref = db.collection("events")
+
+        for doc in old_ref.stream():
+            data = doc.to_dict()
+            data["origin"] = "external"
+            data["source"] = "ticketmaster"
+            data["originalId"] = data.get("eventId")
+            new_ref.document(data["eventId"]).set(data)
+
+        print("✅ Ticketmaster events migrated to unified 'events' collection.")
+        
+    migrate= migrate_ticketmaster_events()
+    print(json.dumps(migrate, indent=2))

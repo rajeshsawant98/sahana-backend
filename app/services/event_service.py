@@ -4,6 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 from google.cloud.firestore_v1 import ArrayRemove
+from app.auth.firebase_config import get_firestore_client
 
 # Load environment variables
 load_dotenv()
@@ -11,39 +12,40 @@ load_dotenv()
 # Firebase credentials
 firebase_cred_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 
-# Initialize Firebase
-def initialize_firebase():
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(firebase_cred_path)
-        firebase_admin.initialize_app(cred)
-
-# Store event data in Firestore
+# Create a new event
 def create_event(event_data):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         events_ref = db.collection("events")
-        
+
         # Generate unique event ID
         event_doc = events_ref.document()
         event_id = event_doc.id
-        
-        event_doc.set({
+
+        # Set common event fields
+        event_payload = {
             "eventId": event_id,
             "eventName": event_data["eventName"],
             "location": event_data["location"],
-            "startTime": event_data["startTime"],  # ISO format string
-            "duration": event_data["duration"],  # In minutes
-            "categories": event_data["categories"],  # List of categories
-            "isOnline": event_data["isOnline"],
+            "startTime": event_data["startTime"],
+            "duration": event_data["duration"],
+            "categories": event_data["categories"],
+            "isOnline": event_data.get("isOnline", False),
             "joinLink": event_data.get("joinLink", ""),
             "imageURL": event_data.get("imageURL", ""),
-            "createdBy": event_data["createdBy"],  # User who created the event
+            "createdBy": event_data["createdBy"],
             "createdByEmail": event_data["createdByEmail"],
-            "createdAt": datetime.utcnow().isoformat()
-        })
+            "createdAt": datetime.utcnow().isoformat(),
+            "description": event_data.get("description", "No description available"),
+            "rsvpList": [],
+            "origin": "community",
+            "source": "user",
+        }
 
-        print(f"Event '{event_data['eventName']}' created successfully!")
+        # Save to Firestore
+        event_doc.set(event_payload)
+
+        print(f"Event '{event_payload['eventName']}' created successfully!")
         return {"eventId": event_id}
     except Exception as e:
         print(f"Error creating event: {str(e)}")
@@ -52,8 +54,7 @@ def create_event(event_data):
 # Retrieve all events
 def get_all_events():
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         events_ref = db.collection("events").stream()
 
         events = []
@@ -66,24 +67,18 @@ def get_all_events():
         return []
 
 # Get event by ID
-def get_event_by_id(event_id):
+def get_event_by_id(event_id: str):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
+
         event_ref = db.collection("events").document(event_id)
         event = event_ref.get()
 
         if event.exists:
             return event.to_dict()
-        
-         # If not found, try ticketmasterEvents collection
-        tm_doc_ref = db.collection("ticketmasterEvents").document(event_id)
-        tm_doc = tm_doc_ref.get()
-        
-        if tm_doc.exists:
-            return tm_doc.to_dict()
-        else:
-            return None
+
+        return None
+
     except Exception as e:
         print(f"Error fetching event by ID: {str(e)}")
         return None
@@ -91,8 +86,7 @@ def get_event_by_id(event_id):
 # Update event details
 def update_event(event_id, update_data):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         event_ref = db.collection("events").document(event_id)
 
         if event_ref.get().exists:
@@ -109,8 +103,7 @@ def update_event(event_id, update_data):
 # Delete event
 def delete_event(event_id):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         event_ref = db.collection("events").document(event_id)
 
         if event_ref.get().exists:
@@ -128,8 +121,7 @@ def delete_event(event_id):
     
 def get_my_events(email):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         events_ref = db.collection("events").where("createdByEmail", "==", email).stream()
 
         events = []
@@ -144,8 +136,7 @@ def get_my_events(email):
 # RSVP to event
 def rsvp_to_event(event_id, email):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         event_ref = db.collection("events").document(event_id)
         event = event_ref.get()
 
@@ -169,8 +160,7 @@ def rsvp_to_event(event_id, email):
 # Cancel RSVP
 def cancel_user_rsvp(event_id: str, user_email: str):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
 
         event_ref = db.collection("events").document(event_id)
 
@@ -190,8 +180,7 @@ def cancel_user_rsvp(event_id: str, user_email: str):
 # Fetch RSVP list for an event
 def get_rsvp_list(event_id):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         event_ref = db.collection("events").document(event_id)
         event = event_ref.get()
 
@@ -213,8 +202,7 @@ def get_rsvp_list(event_id):
 #Fetch events RSVP'd by a specific user
 def get_user_rsvps(email):
     try:
-        initialize_firebase()
-        db = firestore.client()
+        db = get_firestore_client()
         events_ref = db.collection("events").where("rsvpList", "array_contains", email).stream()
 
         events = []
@@ -226,3 +214,18 @@ def get_user_rsvps(email):
         print(f"Error fetching user RSVPs: {str(e)}")
         return []
     
+def get_nearby_events(city: str, state: str) -> list[dict]:
+    db = get_firestore_client()
+    print(f"📥 Querying for city: {city}, state: {state}")
+
+    ref = db.collection("events")
+    query = (
+        ref.where("location.city", "==", city)
+           .where("location.state", "==", state)
+           .order_by("startTime")
+           .limit(30)
+    )
+
+    events = [doc.to_dict() for doc in query.stream()]
+    print(f"📤 Found {len(events)} external events")
+    return events

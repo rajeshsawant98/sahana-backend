@@ -30,10 +30,7 @@ def get_firestore_client():
 def store_user_data(user_data):
     try:
         # Initialize Firebase if not already done
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
         user_ref = db.collection("users").document(user_data["uid"])
         user_ref.set({
             "name": user_data["name"],
@@ -48,10 +45,7 @@ def store_user_data(user_data):
 # Store user with password (for normal login)
 def store_user_with_password(email, password, name):
     try:
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
         user_ref = db.collection("users").document(email)
 
         # Hash the password before storing it using Passlib
@@ -70,10 +64,7 @@ def store_user_with_password(email, password, name):
 # Verify user password (for normal login)
 def verify_user_password(email, password):
     try:
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
         user_ref = db.collection("users").document(email)
         user = user_ref.get()
 
@@ -102,10 +93,7 @@ def verify_user_password(email, password):
 # Retrieve user data by email
 def get_user_by_email(email: str):
     try:
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
         
@@ -126,10 +114,7 @@ def get_user_by_email(email: str):
 # Update user profile in Firestore
 def update_user_data(user_data: dict, user_email: str):
     try:
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
 
         # Query the 'users' collection where the 'email' field matches the given email
         users_ref = db.collection("users")
@@ -165,10 +150,7 @@ def update_user_data(user_data: dict, user_email: str):
 def store_or_update_user_data(user_data):
     try:
         # Initialize Firebase if not already done
-        if not firebase_admin._apps:
-            initialize_firebase()
-
-        db = firestore.client()
+        db = get_firestore_client()
         user_email = user_data["email"]
 
         # Check if the user already exists

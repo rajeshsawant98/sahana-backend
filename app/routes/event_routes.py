@@ -4,7 +4,7 @@ from typing import List, Optional
 from app.services.event_service import *
 from app.auth.jwt_utils import get_current_user
 from app.models.event import event as EventCreateRequest
-from app.services.events_retrival_service import get_ticketmaster_events, fetch_ticketmaster_events
+from app.services.events_retrival_service import get_external_events, fetch_ticketmaster_events
 from app.auth.roles import admin_only
 
 
@@ -117,7 +117,7 @@ def list_external_events(
     current_user: dict = Depends(get_current_user)
 ):
     print(f"📡 Incoming query for city={city}, state={state}")
-    events = get_ticketmaster_events(city, state)
+    events = get_external_events(city, state)
     print(f"✅ Fetched {len(events)} events from Firestore")
     
     if not events:
