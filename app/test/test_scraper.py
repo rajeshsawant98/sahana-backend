@@ -2,7 +2,7 @@
 
 from app.services.events_retrival_service import fetch_ticketmaster_events , get_unique_user_locations, ingest_events_for_all_cities
 import json
-from app.auth.firebase_config import get_firestore_client
+from app.auth.firebase_init import get_firestore_client
 
 if __name__ == "__main__":
     # events = fetch_ticketmaster_events("Tempe", "AZ")

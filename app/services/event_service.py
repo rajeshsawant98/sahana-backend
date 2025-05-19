@@ -4,7 +4,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
 from google.cloud.firestore_v1 import ArrayRemove
-from app.auth.firebase_config import get_firestore_client
+from app.auth.firebase_init import get_firestore_client
 
 # Load environment variables
 load_dotenv()

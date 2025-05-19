@@ -5,7 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 from typing import Dict, List
 from app.db.firestore_client import save_event_to_firestore
-from app.auth.firebase_config import get_firestore_client
+from app.auth.firebase_init import get_firestore_client
 
 load_dotenv()  # Load .env variables
 

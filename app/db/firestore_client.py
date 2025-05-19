@@ -1,4 +1,4 @@
-from app.auth.firebase_config import get_firestore_client
+from app.auth.firebase_init import get_firestore_client
 
 def save_event_to_firestore(event: dict, collection: str = "events"):
     try:

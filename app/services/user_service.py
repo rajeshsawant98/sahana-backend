@@ -1,6 +1,6 @@
 from passlib.context import CryptContext
 from firebase_admin import firestore
-from app.auth.firebase_config import get_firestore_client
+from app.auth.firebase_init import get_firestore_client
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
