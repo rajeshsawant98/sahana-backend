@@ -1,5 +1,5 @@
 import json
-from app.services.events_retrival_service import (
+from app.services.event_ingestion_service import (
     fetch_ticketmaster_events,
     get_unique_user_locations,
     ingest_events_for_all_cities
