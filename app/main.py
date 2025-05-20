@@ -5,14 +5,11 @@ from app.routes.event_routes import event_router  # Import the event router
 import uvicorn
 from app import config
 import os
-import firebase_admin
-from firebase_admin import credentials
-from app.auth.firebase_init import get_firestore_client
+
 
 
 app = FastAPI()
 
-db = get_firestore_client()
 
 origins = [
     "https://sahana-drab.vercel.app",  # Deployed frontend
