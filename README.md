@@ -39,7 +39,6 @@ pip install -r requirements.txt
 - Create a Firebase project
 - Enable Firestore and Authentication (email/password + Google SSO)
 - Download your Firebase admin SDK key and set it as an environment variable:
-
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=path/to/firebase-adminsdk.json
 ```
@@ -82,12 +81,13 @@ sahana-backend/
 │   ├── models/                 # Pydantic models for request/response
 │   ├── routes/                 # API routes: auth, events, rsvp, etc.
 │   ├── services/               # Business logic (e.g. RSVP handlers)
+│   ├── repositories/           # Firestore data access layer (Repository pattern)
+│   ├── utils/                  # Utility functions and helpers
 │   ├── test/                   # Unit/integration tests
 │   ├── __init__.py
 │   ├── config.py               # Env config handling
 │   ├── db.py                   # Firebase client / DB init
 │   └── main.py                 # FastAPI app entrypoint
-├── venv/                       # Virtual environment (not committed)
 ├── .env                        # Environment variables
 ├── .gitignore
 ├── Dockerfile                  # Docker container setup
