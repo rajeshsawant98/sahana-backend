@@ -11,8 +11,8 @@ from firebase_admin import credentials
 app = FastAPI()
 
 # Initialize Firebase
-cred = credentials.Certificate(config.firebase_cred_path)
-firebase_admin.initialize_app(cred)
+# cred = credentials.Certificate(config.firebase_cred_path)
+# firebase_admin.initialize_app(cred)
 
 origins = [
     "https://sahana-drab.vercel.app",  # Deployed frontend
