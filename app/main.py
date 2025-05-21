@@ -23,10 +23,7 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(event_router, prefix="/api/events", tags=["Events"])
 
+if __name__ == "__main__":
+     uvicorn.run("app.main:app", host="0.0.0.0", port=8080, reload=True)
+     
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("✅ FastAPI app started and ready.")
-    yield
-
-app = FastAPI(lifespan=lifespan)
