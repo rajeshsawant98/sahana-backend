@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request
@@ -6,7 +6,8 @@ from app.services.user_service import (
     store_or_update_user_data,
     store_user_with_password,
     verify_user_password,
-    get_user_by_email
+    get_user_by_email,
+    update_user_data
 )
 from app.auth.jwt_utils import (
     create_access_token,
@@ -14,10 +15,11 @@ from app.auth.jwt_utils import (
     verify_refresh_token,
     get_current_user
 )
-from app.services.event_service import get_my_events
 import os
 
 auth_router = APIRouter()
+
+# -------------------- Models --------------------
 
 class GoogleLoginRequest(BaseModel):
     token: str
@@ -45,13 +47,14 @@ class UpdateInterestsRequest(BaseModel):
 class RefreshRequest(BaseModel):
     refresh_token: str
 
+# -------------------- Routes --------------------
+
 # Google Login
 @auth_router.post("/google")
 async def google_login(request: GoogleLoginRequest):
     try:
         token = request.token
         client_id = os.getenv("GOOGLE_CLIENT_ID")
-
         id_info = id_token.verify_oauth2_token(token, Request(), client_id)
 
         user_data = {
@@ -73,8 +76,7 @@ async def google_login(request: GoogleLoginRequest):
             "token_type": "bearer",
             "email": user_data["email"]
         }
-
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=400, detail="Google login failed")
 
 # Normal Login
@@ -96,12 +98,14 @@ async def normal_login(request: NormalLoginRequest):
         "role": user.get("role", "user")
     }
 
+# Register
 @auth_router.post("/register")
 async def register_user(request: RegisterRequest):
     if get_user_by_email(request.email):
         raise HTTPException(status_code=400, detail="Email already exists")
 
     store_user_with_password(request.email, request.password, request.name)
+
     access_token = create_access_token(data={"email": request.email})
     refresh_token = create_refresh_token(data={"email": request.email})
 
@@ -123,6 +127,7 @@ async def refresh_token(request: RefreshRequest):
     decoded_data = verify_refresh_token(request.refresh_token)
     if not decoded_data or "data" not in decoded_data or "email" not in decoded_data["data"]:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
     new_access_token = create_access_token(data={"email": decoded_data["data"]["email"]})
     return {"access_token": new_access_token, "token_type": "bearer"}
 
@@ -155,21 +160,19 @@ async def update_profile(request: UpdateProfileRequest, current_user: dict = Dep
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user["name"] = request.name
-    user["profession"] = request.profession
-    user["bio"] = request.bio
-    user["phoneNumber"] = request.phoneNumber
-    user["birthdate"] = request.birthdate
-    existing_location = user.get("location")
-    if not isinstance(existing_location, dict):
-        existing_location = {}
-
-    user["location"] = {
-        **existing_location,
-        **request.location
+    updated_data = {
+        "name": request.name,
+        "profession": request.profession,
+        "bio": request.bio,
+        "phoneNumber": request.phoneNumber,
+        "birthdate": request.birthdate,
+        "location": {
+            **(user.get("location") or {}),
+            **request.location
+        }
     }
 
-    store_or_update_user_data(user)
+    update_user_data(updated_data, current_user["email"])
     return {"message": "Profile updated successfully"}
 
 # Update user interests
@@ -179,6 +182,5 @@ async def update_interests(request: UpdateInterestsRequest, current_user: dict =
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user["interests"] = request.interests
-    store_or_update_user_data(user)
+    update_user_data({"interests": request.interests}, current_user["email"])
     return {"message": "User interests updated successfully"}
