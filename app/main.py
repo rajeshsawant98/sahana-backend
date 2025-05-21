@@ -3,16 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth import auth_router  # Import the auth router
 from app.routes.event_routes import event_router  # Import the event router
 import uvicorn
-from app import config
-import os
-import firebase_admin
-from firebase_admin import credentials
 
 app = FastAPI()
-
-# Initialize Firebase
-# cred = credentials.Certificate(config.firebase_cred_path)
-# firebase_admin.initialize_app(cred)
 
 origins = [
     "https://sahana-drab.vercel.app",  # Deployed frontend
