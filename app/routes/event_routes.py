@@ -20,13 +20,15 @@ from app.services.event_ingestion_service import (
 )
 
 from app.auth.jwt_utils import get_current_user
+from app.auth.roles import user_only, admin_only
+from app.auth.event_roles import require_event_creator, require_event_organizer, require_event_moderator
 from app.models.event import event as EventCreateRequest
 
 event_router = APIRouter()
 
 # Create a new event
 @event_router.post("/new")
-async def create_new_event(event: EventCreateRequest):
+async def create_new_event(event: EventCreateRequest , current_user: dict = Depends(user_only)):
     event_data = event.model_dump()
     result = create_event(event_data)
     if result:
@@ -47,25 +49,25 @@ async def fetch_event_by_id(event_id: str):
         return event
     raise HTTPException(status_code=404, detail="Event not found")
 
-# Update event
+# Update event (creator only)
 @event_router.put("/{event_id}")
-async def modify_event(event_id: str, update_data: dict):
+async def modify_event(event_id: str, update_data: dict, current_user: dict = Depends(require_event_creator)):
     success = update_event(event_id, update_data)
     if success:
         return {"message": "Event updated successfully"}
-    raise HTTPException(status_code=404, detail="Failed to update event")
+    raise HTTPException(status_code=500, detail="Failed to update event")
 
-# Delete event
+# Delete event (creator only)
 @event_router.delete("/{event_id}")
-async def remove_event(event_id: str):
+async def remove_event(event_id: str, current_user: dict = Depends(require_event_creator)):
     success = delete_event(event_id)
     if success:
         return {"message": "Event deleted successfully"}
-    raise HTTPException(status_code=404, detail="Failed to delete event")
+    raise HTTPException(status_code=500, detail="Failed to delete event")
 
 # RSVP to event
 @event_router.post("/{event_id}/rsvp")
-async def rsvp_event(event_id: str, current_user: dict = Depends(get_current_user)):
+async def rsvp_event(event_id: str, current_user: dict = Depends(user_only)):
     email = current_user["email"]
     success = rsvp_to_event(event_id, email)
     if success:
@@ -74,7 +76,7 @@ async def rsvp_event(event_id: str, current_user: dict = Depends(get_current_use
 
 # Cancel RSVP
 @event_router.delete("/{event_id}/rsvp")
-async def cancel_event_rsvp(event_id: str, current_user: dict = Depends(get_current_user)):
+async def cancel_event_rsvp(event_id: str, current_user: dict = Depends(user_only)):
     try:
         email = current_user["email"]
         result = cancel_user_rsvp(event_id, email)
@@ -84,7 +86,7 @@ async def cancel_event_rsvp(event_id: str, current_user: dict = Depends(get_curr
 
 # Events created by user
 @event_router.get("/me/created")
-async def fetch_my_created_events(current_user: dict = Depends(get_current_user)):
+async def fetch_my_created_events(current_user: dict = Depends(user_only)):
     email = current_user["email"]
     events = get_my_events(email)
     if events:
@@ -93,7 +95,7 @@ async def fetch_my_created_events(current_user: dict = Depends(get_current_user)
 
 # Events RSVP'd by user
 @event_router.get("/me/rsvped")
-async def fetch_user_rsvped_events(current_user: dict = Depends(get_current_user)):
+async def fetch_user_rsvped_events(current_user: dict = Depends(user_only)):
     try:
         email = current_user["email"]
         events = get_user_rsvps(email)
@@ -105,7 +107,7 @@ async def fetch_user_rsvped_events(current_user: dict = Depends(get_current_user
 
 # Fetch + Ingest Ticketmaster events (per city/state)
 @event_router.post("/fetch-ticketmaster-events")
-def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict = Depends(get_current_user)):
+def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict = Depends(admin_only)):
     city = payload.get("city")
     state = payload.get("state")
 
@@ -122,18 +124,18 @@ def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict 
 
 # Ingest events for all user locations (used for batch processing)
 @event_router.post("/ingest/all")
-def ingest_for_all_user_locations(current_user: dict = Depends(get_current_user)):
+def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)):
     result = ingest_events_for_all_cities()
     return result
 
 # External events by location
 @event_router.get("/location/external")
-def list_external_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(get_current_user)):
+def list_external_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(user_only)):
     events = get_external_events(city, state)
     return {"events": events, "count": len(events)}
 
 # Nearby community events (internal) by city/state
 @event_router.get("/location/nearby")
-def list_nearby_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(get_current_user)):
+def list_nearby_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(user_only)):
     events = get_nearby_events(city, state)
     return {"events": events, "count": len(events)}

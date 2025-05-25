@@ -15,6 +15,7 @@ from app.auth.jwt_utils import (
     verify_refresh_token,
     get_current_user
 )
+from app.auth.roles import user_only
 import os
 
 auth_router = APIRouter()
@@ -65,9 +66,15 @@ async def google_login(request: GoogleLoginRequest):
         }
 
         store_or_update_user_data(user_data)
+        
+        user = get_user_by_email(user_data["email"])
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        role = user.get("role", "user")
 
-        access_token = create_access_token(data={"email": user_data["email"]})
-        refresh_token = create_refresh_token(data={"email": user_data["email"]})
+        access_token = create_access_token(data={"email": user_data["email"], "role": role})
+        print(f"access_token: {access_token}")
+        refresh_token = create_refresh_token(data={"email": user_data["email"], "role": role})
 
         return {
             "message": "User authenticated successfully",
@@ -86,8 +93,8 @@ async def normal_login(request: NormalLoginRequest):
     if not user or not verify_user_password(request.email, request.password):
         raise HTTPException(status_code=400, detail="Invalid credentials") 
 
-    access_token = create_access_token(data={"email": user["email"]})
-    refresh_token = create_refresh_token(data={"email": user["email"]})
+    access_token = create_access_token(data={"email": user["email"], "role": user.get("role", "user")})
+    refresh_token = create_refresh_token(data={"email": user["email"], "role": user.get("role", "user")})
 
     return {
         "message": "User authenticated successfully",
@@ -106,8 +113,8 @@ async def register_user(request: RegisterRequest):
 
     store_user_with_password(request.email, request.password, request.name)
 
-    access_token = create_access_token(data={"email": request.email})
-    refresh_token = create_refresh_token(data={"email": request.email})
+    access_token = create_access_token(data={"email": request.email, "role": "user"})
+    refresh_token = create_refresh_token(data={"email": request.email, "role": "user"})
 
     return {
         "message": "User registered successfully",
@@ -125,15 +132,28 @@ async def refresh_token(request: RefreshRequest):
         raise HTTPException(status_code=400, detail="Missing refresh token")
 
     decoded_data = verify_refresh_token(request.refresh_token)
-    if not decoded_data or "data" not in decoded_data or "email" not in decoded_data["data"]:
+
+    if not decoded_data or "data" not in decoded_data:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
 
-    new_access_token = create_access_token(data={"email": decoded_data["data"]["email"]})
-    return {"access_token": new_access_token, "token_type": "bearer"}
+    user_data = decoded_data["data"]
+    if "email" not in user_data or "role" not in user_data:
+        raise HTTPException(status_code=401, detail="Malformed refresh token")
+
+    # Recreate access token with both email and role
+    new_access_token = create_access_token(data={
+        "email": user_data["email"],
+        "role": user_data["role"]
+    })
+
+    return {"access_token": new_access_token,
+            "token_type": "bearer",
+            "email": user_data["email"],
+            "role": user_data["role"]}
 
 # Get current user profile
 @auth_router.get("/me")
-async def get_profile(current_user: dict = Depends(get_current_user)):
+async def get_profile(current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -155,7 +175,7 @@ async def get_profile(current_user: dict = Depends(get_current_user)):
 
 # Update user profile
 @auth_router.put("/me")
-async def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(get_current_user)):
+async def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -177,7 +197,7 @@ async def update_profile(request: UpdateProfileRequest, current_user: dict = Dep
 
 # Update user interests
 @auth_router.put("/me/interests")
-async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(get_current_user)):
+async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
