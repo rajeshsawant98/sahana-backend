@@ -1,4 +1,5 @@
 from app.repositories.event_repository import EventRepository
+from app.services.user_service import validate_user_emails
 
 event_repo = EventRepository()
 
@@ -84,3 +85,32 @@ def get_external_events(city: str, state: str) -> list[dict]:
     except Exception as e:
         print(f"Error in get_external_events: {e}")
         return []
+    
+#Role assignment with email validation
+def set_organizers(event_id: str, emails: list[str], creator_email: str) -> dict:
+    result = validate_user_emails(emails)
+    valid_emails = result["valid"]
+    invalid_emails = result["invalid"]
+
+    # Ensure creator is always an organizer
+    if creator_email not in valid_emails:
+        valid_emails.append(creator_email)
+
+    success = event_repo.update_event_roles(event_id, "organizerIds", valid_emails)
+    return {
+        "success": success,
+        "organizerIds": valid_emails,
+        "skipped": invalid_emails
+    }
+
+def set_moderators(event_id: str, emails: list[str]) -> dict:
+    result = validate_user_emails(emails)
+    valid_emails = result["valid"]
+    invalid_emails = result["invalid"]
+
+    success = event_repo.update_event_roles(event_id, "moderatorIds", valid_emails)
+    return {
+        "success": success,
+        "moderatorIds": valid_emails,
+        "skipped": invalid_emails
+    }

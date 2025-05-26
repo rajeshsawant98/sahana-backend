@@ -81,7 +81,6 @@ async def google_login(request: GoogleLoginRequest):
             "access_token": access_token,
             "refresh_token": refresh_token,
             "token_type": "bearer",
-            "email": user_data["email"]
         }
     except Exception:
         raise HTTPException(status_code=400, detail="Google login failed")
@@ -102,7 +101,6 @@ async def normal_login(request: NormalLoginRequest):
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "email": user["email"],
-        "role": user.get("role", "user")
     }
 
 # Register
@@ -120,9 +118,7 @@ async def register_user(request: RegisterRequest):
         "message": "User registered successfully",
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "email": request.email,
-        "role": "user"
+        "token_type": "bearer",    
     }
 
 # Refresh Token
@@ -148,8 +144,7 @@ async def refresh_token(request: RefreshRequest):
 
     return {"access_token": new_access_token,
             "token_type": "bearer",
-            "email": user_data["email"],
-            "role": user_data["role"]}
+            "message": "Access token refreshed successfully"}
 
 # Get current user profile
 @auth_router.get("/me")

@@ -116,3 +116,12 @@ class EventRepository:
         events = [doc.to_dict() for doc in query.stream()]
         print(f"📤 Found {len(events)} external events")
         return events
+    
+    def update_event_roles(self, event_id: str, field: str, emails: list[str]) -> bool:
+        try:
+            event_ref = self.collection.document(event_id)
+            event_ref.update({field: emails})
+            return True
+        except Exception as e:
+            print(f"Error updating {field} for event {event_id}: {e}")
+            return False

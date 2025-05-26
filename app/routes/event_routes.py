@@ -10,7 +10,9 @@ from app.services.event_service import (
     cancel_user_rsvp,
     get_user_rsvps,
     get_nearby_events,
-    get_external_events
+    get_external_events,
+    set_organizers,
+    set_moderators
 )
 
 from app.services.event_ingestion_service import (
@@ -139,3 +141,53 @@ def list_external_events(city: str = Query(...), state: str = Query(...), curren
 def list_nearby_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(user_only)):
     events = get_nearby_events(city, state)
     return {"events": events, "count": len(events)}
+
+
+@event_router.patch("/{event_id}/organizers")
+async def update_event_organizers(
+    event_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(require_event_creator)
+):
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    new_organizers = payload.get("organizerEmails", [])
+    creator_email = event.get("createdByEmail")
+
+    if creator_email is None:
+        raise HTTPException(status_code=500, detail="Event creator email is missing.")
+
+    result = set_organizers(event_id, new_organizers, creator_email)
+
+    if result["success"]:
+        return {
+            "message": "Organizers updated",
+            "organizerIds": result["organizerIds"],
+            "skipped": result["skipped"]
+        }
+    raise HTTPException(status_code=500, detail="Failed to update organizers")
+
+@event_router.patch("/{event_id}/moderators")
+
+async def update_event_moderators(
+    event_id: str,
+    payload: dict = Body(...),
+    current_user: dict = Depends(require_event_organizer)
+):
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    new_moderators = payload.get("moderatorEmails", [])
+    result = set_moderators(event_id, new_moderators)
+
+    if result["success"]:
+        return {
+            "message": "Moderators updated",
+            "moderatorIds": result["moderatorIds"],
+            "skipped": result["skipped"]
+        }
+
+    raise HTTPException(status_code=500, detail="Failed to update moderators")

@@ -23,3 +23,16 @@ def store_or_update_user_data(user_data: dict):
         repo.update_profile_by_email(user_data, user_data["email"])
     else:
         repo.store_google_user(user_data)
+
+# ✅ New function to validate email addresses (used in role assignment)
+def validate_user_emails(email_list: list[str]) -> dict:
+    valid, invalid = [], []
+    for email in email_list:
+        if repo.get_by_email(email):
+            valid.append(email)
+        else:
+            invalid.append(email)
+    return {
+        "valid": valid,
+        "invalid": invalid
+    }
