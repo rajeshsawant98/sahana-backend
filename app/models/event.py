@@ -10,7 +10,7 @@ class event(BaseModel):
     categories: List[str]
     isOnline: Optional[bool] = False
     joinLink: Optional[str] = None
-    imageURL: Optional[str] = None
+    imageUrl: Optional[str] = None
     createdBy: str  # User ID or email of the event creator
     createdByEmail: str
     createdAt: Optional[str] = None

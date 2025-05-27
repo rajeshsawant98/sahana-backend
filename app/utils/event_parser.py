@@ -44,7 +44,7 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
         "categories": list(categories),
         "isOnline": is_online,
         "joinLink": event.get("url"),
-        "imageURL": event.get("images", [{}])[0].get("url"),
+        "imageUrl": event.get("images", [{}])[0].get("url"),
         "createdBy": "Ticketmaster",
         "createdByEmail": "scraper@ticketmaster.com",
         "createdAt": datetime.utcnow().isoformat(),

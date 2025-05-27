@@ -4,6 +4,9 @@ from app.services.event_ingestion_service import (
     get_unique_user_locations,
     ingest_events_for_all_cities
 )
+from app.services.event_service import (
+    delete_old_events
+)
 from app.auth.firebase_init import get_firestore_client
 
 
@@ -23,7 +26,7 @@ def show_sample_ticketmaster_events(city="Tempe", state="AZ"):
         print(f"Categories : {e['categories']}")
         print(f"Online?    : {e['isOnline']}")
         print(f"Join Link  : {e['joinLink']}")
-        print(f"Image URL  : {e['imageURL']}")
+        print(f"Image URL  : {e['imageUrl']}")
         print(f"Description: {e['description'][:100]}...")
         print("-" * 60)
 
@@ -86,6 +89,8 @@ def migrate_ticketmaster_events():
     return migrated
 
 
+
+
 if __name__ == "__main__":
     # Uncomment the task you want to test
 
@@ -94,4 +99,5 @@ if __name__ == "__main__":
     #run_ingestion_for_all_cities()
     # backfill_user_events_metadata()
     # migrate_ticketmaster_events()
+    #delete_old_events()  # This will delete events older than 1 year
     pass

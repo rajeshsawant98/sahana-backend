@@ -19,7 +19,7 @@ class EventRepository:
             "categories": data["categories"],
             "isOnline": data.get("isOnline", False),
             "joinLink": data.get("joinLink", ""),
-            "imageURL": data.get("imageURL", ""),
+            "imageUrl": data.get("imageUrl", ""),
             "createdBy": data["createdBy"],
             "createdByEmail": data["createdByEmail"],
             "createdAt": datetime.utcnow().isoformat(),
@@ -125,3 +125,31 @@ class EventRepository:
         except Exception as e:
             print(f"Error updating {field} for event {event_id}: {e}")
             return False
+        
+    def delete_events_before_today(self) -> int:
+        """
+        Deletes all events from the Firestore collection whose createdAt is before today.
+        Returns the count of successfully deleted events.
+        """
+        today = datetime.utcnow().date()
+        deleted_count = 0
+
+        for doc in self.collection.stream():
+            data = doc.to_dict()
+            event_id = data.get("eventId")
+            created_at = data.get("createdAt")
+
+            if not event_id or not created_at:
+                continue
+
+            try:
+                created_date = datetime.fromisoformat(created_at).date()
+                if created_date < today:
+                    if self.delete_event(event_id):
+                        print(f"🗑️ Deleted event: {event_id} ({data.get('eventName')})")
+                        deleted_count += 1
+            except Exception as e:
+                print(f"⚠️ Failed to delete event {event_id}: {e}")
+
+        print(f"✅ Deleted {deleted_count} old events.")
+        return deleted_count

@@ -114,3 +114,7 @@ def set_moderators(event_id: str, emails: list[str]) -> dict:
         "moderatorIds": valid_emails,
         "skipped": invalid_emails
     }
+    
+
+def delete_old_events() -> int:
+    return event_repo.delete_events_before_today()
