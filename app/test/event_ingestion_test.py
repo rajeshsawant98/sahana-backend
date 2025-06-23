@@ -1,4 +1,5 @@
 import json
+import asyncio
 from app.services.event_ingestion_service import (
     fetch_ticketmaster_events,
     get_unique_user_locations,
@@ -42,8 +43,10 @@ def show_all_user_locations():
         print("-" * 40)
 
 
+
+
 def run_ingestion_for_all_cities():
-    result = ingest_events_for_all_cities()
+    result = asyncio.run(ingest_events_for_all_cities())
     print(f"\n✅ Ingestion Summary")
     print(f"Total Events Saved    : {result['total_events']}")
     print(f"Total Cities Processed: {result['processed_cities']}")
