@@ -187,9 +187,8 @@ def scrape_eventbrite(city="Tempe", state="AZ", max_scrolls=10, seen_links=None)
     with open("failed_urls.log", "a") as f:
         f.write("\n".join(failed_urls))
 
-    with open("eventbrite_events.json", "a", encoding="utf-8") as f:
-        json.dump(results, f, indent=2)
-
+    # with open("eventbrite_events.json", "a", encoding="utf-8") as f:
+    #     json.dump(results, f, indent=2)
     print(f"✅ Scraped {len(results)} unique events.")
     return results
 
