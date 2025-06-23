@@ -124,11 +124,6 @@ def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict 
         "sample": raw_events[:3]
     }
 
-# Ingest events for all user locations (used for batch processing)
-@event_router.post("/ingest/all")
-def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)):
-    result = ingest_events_for_all_cities()
-    return result
 
 # External events by location
 @event_router.get("/location/external")
@@ -191,3 +186,8 @@ async def update_event_moderators(
         }
 
     raise HTTPException(status_code=500, detail="Failed to update moderators")
+
+@event_router.post("/ingest/all")
+async def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)):
+    result = await ingest_events_for_all_cities()
+    return result

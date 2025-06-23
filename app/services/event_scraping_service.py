@@ -1,7 +1,12 @@
-from app.scrapers.eventbrite_scraper import scrape_eventbrite
+# from app.scrapers.eventbrite_scraper import scrape_eventbrite
 
-def get_eventbrite_events(city: str, state: str, seen_links=None) -> list[dict]:
-    return scrape_eventbrite(city, state, seen_links=seen_links)
+# def get_eventbrite_events(city: str, state: str, seen_links=None) -> list[dict]:
+#     return scrape_eventbrite(city, state, seen_links=seen_links)
+
+from app.scrapers.eventbrite_scraper_async import scrape_eventbrite_async
+
+async def get_eventbrite_events(city: str, state: str, seen_links=None) -> list[dict]:
+    return await scrape_eventbrite_async(city, state, seen_links=seen_links)
 
 # from playwright.sync_api import sync_playwright
 # import json

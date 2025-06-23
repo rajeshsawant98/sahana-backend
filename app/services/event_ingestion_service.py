@@ -4,7 +4,7 @@ from typing import List
 from app.repositories.event_ingestion_repository import EventIngestionRepository
 from app.auth.firebase_init import get_firestore_client
 from app.utils.event_parser import ticketmaster_to_sahana_format
-from app.services.event_scraping_service import scrape_eventbrite
+from app.services.event_scraping_service import get_eventbrite_events
 from app.utils.cache_utils import load_url_cache, save_url_cache
 
 # Repo is used for all DB operations
@@ -87,25 +87,28 @@ def ingest_bulk_events(events: list[dict]) -> dict:
         "skipped": skipped
     }
 
-def ingest_events_for_all_cities() -> dict:
+async def ingest_events_for_all_cities() -> dict:
+    from app.services.event_ingestion_service import get_unique_user_locations  # keep here to avoid circular import
+
     total_events = 0
     summary = []
-    url_cache = load_url_cache()  # load cache once
+    url_cache = load_url_cache()
 
     for city, state in get_unique_user_locations():
-        events = fetch_ticketmaster_events(city, state)
         try:
-            eb_events = scrape_eventbrite(city, state, seen_links=url_cache)
-            events.extend(eb_events)
+            eb_events = await get_eventbrite_events(city, state, seen_links=url_cache)
         except Exception as e:
             print(f"[ERROR] Eventbrite scraping failed for {city}, {state}: {e}")
-        result = ingest_bulk_events(events)
-        total_events += result["saved"]
-        summary.append(f"{result['saved']} new events for {city}, {state}")
+            eb_events = []
 
-    save_url_cache(url_cache)  # save updated cache
+        saved = sum(1 for ev in eb_events if repo.save_event(ev))
+        total_events += saved
+        summary.append(f"{saved} new events for {city}, {state}")
+
+    save_url_cache(url_cache)
+
     return {
         "total_events": total_events,
         "processed_cities": len(summary),
-        "details": summary
+        "summary": summary
     }
