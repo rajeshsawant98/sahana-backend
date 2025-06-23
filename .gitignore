@@ -9,7 +9,7 @@ __pycache__/
 firebase_cred.json
 eventbrite_events.json
 eventbrite_data.json
-scraped_urls.log
-failed_urls.log
 
+app/cache/
+*.log
 

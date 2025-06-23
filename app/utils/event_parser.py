@@ -56,33 +56,3 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
     }
 
 
-# Eventbrite parser
-def eventbrite_to_sahana_format(event: Dict) -> Dict:
-    return {
-        "eventId": str(uuid4()),
-        "eventName": event.get("title", "Untitled Event").strip(),
-        "location": {
-            "name": "Eventbrite Event",
-            "city": "Tempe",
-            "state": "AZ",
-            "country": "United States",
-            "latitude": None,
-            "longitude": None,
-            "formattedAddress": "N/A"
-        },
-        "startTime": None,
-        "duration": 120,
-        "categories": ["General"],
-        "isOnline": False,
-        "joinLink": event.get("link"),
-        "imageUrl": None,
-        "createdBy": "Eventbrite",
-        "createdByEmail": "scraper@eventbrite.com",
-        "createdAt": datetime.utcnow().isoformat(),
-        "description": event.get("date", "No description available"),
-        "rsvpList": [],
-        "origin": "external",
-        "source": "eventbrite",
-        "originalId": event.get("link")
-    }
-

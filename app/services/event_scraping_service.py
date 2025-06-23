@@ -1,11 +1,12 @@
 from playwright.sync_api import sync_playwright
 import json
 import time
+from urllib.parse import urljoin
+from datetime import datetime, timezone
+from uuid import uuid4
 
 def fetch_event_details(context, event_url):
-    from datetime import datetime, timezone
-    from uuid import uuid4
-
+    
     page = context.new_page()
     try:
         page.goto(event_url, timeout=30000, wait_until="networkidle")
@@ -31,8 +32,6 @@ def fetch_event_details(context, event_url):
     return result
 
 def build_event_object(event, components, server_data):
-    from datetime import datetime, timezone
-    from uuid import uuid4
 
     try:
         city = components.get("eventDetails", {}).get("location", {}).get("venueMultilineAddress", [None, "Unknown, XX"])[1].split(",")[0].strip()
@@ -129,8 +128,10 @@ def build_event_object(event, components, server_data):
     }
     return result
 
-def scrape_eventbrite(city="Tempe", state="AZ", max_scrolls=10):
-    from urllib.parse import urljoin
+def scrape_eventbrite(city="Tempe", state="AZ", max_scrolls=10, seen_links=None):
+    if seen_links is None:
+        seen_links = set()
+        
 
     results = []
 
@@ -161,33 +162,32 @@ def scrape_eventbrite(city="Tempe", state="AZ", max_scrolls=10):
         scraped_urls = []
         failed_urls = []
 
-        seen_links = {}
         hrefs = extract_event_links(page)
 
         for href in hrefs:
             if href in seen_links:
+                print(f"🔗 Skipping already seen link: {href}")
                 continue
-
             try:
                 details = fetch_event_details(context, href)
                 if not details:
                     print(f"❌ Skipping event due to missing details: {href}")
                     continue
-                seen_links[href] = details
+                seen_links.add(href)
+                results.append(details)
                 scraped_urls.append(href)
             except Exception as e:
                 print(f"⚠️ Error fetching details for {href}: {e}")
                 failed_urls.append(href)
 
-        results = list(seen_links.values())
         browser.close()
 
-    with open("scraped_urls.log", "w") as f:
+    with open("scraped_urls.log", "a") as f:
         f.write("\n".join(scraped_urls))
-    with open("failed_urls.log", "w") as f:
+    with open("failed_urls.log", "a") as f:
         f.write("\n".join(failed_urls))
 
-    with open("eventbrite_events.json", "w", encoding="utf-8") as f:
+    with open("eventbrite_events.json", "a", encoding="utf-8") as f:
         json.dump(results, f, indent=2)
 
     print(f"✅ Scraped {len(results)} unique events.")

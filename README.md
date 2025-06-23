@@ -6,6 +6,7 @@ The backend for **Sahana**, a social meetup and event discovery platform. Built 
 ---
 
 ## 🛠️ Tech Stack
+
 - **Python 3.10+**
 - **FastAPI**
 - **Firebase Authentication** (Google SSO & email/password)
@@ -19,31 +20,37 @@ The backend for **Sahana**, a social meetup and event discovery platform. Built 
 ## 🚀 Getting Started
 
 ### 1. Clone the repository
+
 ```bash
 git clone https://github.com/your-username/sahana-backend.git
 cd sahana-backend
 ```
 
 ### 2. Create and activate a virtual environment
+
 ```bash
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
 ### 3. Install dependencies
+
 ```bash
 pip install -r requirements.txt
 ```
 
 ### 4. Set up Firebase
+
 - Create a Firebase project
 - Enable Firestore and Authentication (email/password + Google SSO)
 - Download your Firebase admin SDK key and set it as an environment variable:
+
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=path/to/firebase-adminsdk.json
 ```
 
 ### 5. Create a `.env` file
+
 ```env
 # JWT Auth Secrets
 JWT_SECRET_KEY=<your_jwt_secret_key>
@@ -61,9 +68,11 @@ GOOGLE_APPLICATION_CREDENTIALS=firebase_cred.json
 FIREBASE_CRED_SECRET=firebase_cred
 FIREBASE_CRED_PATH=/tmp/firebase_cred.json
 ```
+
 > ⚠️ **Never commit your `.env` or Firebase credentials to source control.**
 
 ### 6. Run the development server
+
 ```bash
 uvicorn app.main:app --reload
 ```
@@ -71,6 +80,7 @@ uvicorn app.main:app --reload
 ---
 
 ## 📦 Project Structure
+
 ```
 sahana-backend/
 ├── .github/workflows/
@@ -101,6 +111,7 @@ sahana-backend/
 ## 📦 Dependencies (requirements.txt)
 
 ### Web & API
+
 - `fastapi`
 - `uvicorn`
 - `pydantic`
@@ -108,6 +119,7 @@ sahana-backend/
 - `beautifulsoup4`
 
 ### Authentication & Security
+
 - `authlib`
 - `google-auth`
 - `python-jose`
@@ -115,20 +127,24 @@ sahana-backend/
 - `bcrypt`
 
 ### Firebase & Cloud
+
 - `firebase-admin`
 - `google-cloud-secret-manager`
 
 ### Configuration & Storage
+
 - `python-dotenv`
 - `sqlalchemy`
 - `databases`
 
 ### AI Integration (Optional)
+
 - `openai`
 
 ---
 
 ## 🔐 Authentication
+
 - Supports **Google SSO** and **email/password** login
 - JWT token-based authentication
 - Access token stored in Redux, refresh token stored in HttpOnly cookie or localStorage
@@ -138,33 +154,40 @@ sahana-backend/
 ## 📌 Key Features Implemented
 
 ### ✅ User Management
+
 - Signup, login (Google/email)
 - Profile update (name, bio, contact info, location)
 
 ### ✅ Event Management
+
 - Create/update events (online/offline, time, location)
 - Firestore stores each event document
 
 ### ✅ RSVP System
+
 - Join an event (adds to rsvpList)
 - Cancel RSVP (removes user from list)
 - Fetch RSVP’d events for user
 
 ### ✅ Event Discovery
+
 - Filter by category, location
 - See event metadata (time, tags, RSVP status)
 
 ### ✅ Location Services
+
 - Auto-detect or manually set user location
 - Event cards and detail pages use this for relevance
 
 ### ✅ Event Detail API
+
 - Full event detail by ID
 - RSVP status included for logged-in user
 
 ---
 
 ## 📬 API Endpoints (Selected)
+
 - `POST /auth/login` — login with email/password
 - `POST /auth/google` — login via Google SSO
 - `GET /events/` — get all public events
@@ -178,7 +201,8 @@ sahana-backend/
 
 ## 🐳 Docker Support
 
-### Build and run with Docker:
+### Build and run with Docker
+
 ```bash
 docker build -t sahana-backend .
 docker run -p 8000:8000 --env-file .env sahana-backend
@@ -196,12 +220,14 @@ Make sure to mount or copy your `firebase_cred.json` if needed.
 ---
 
 ## 🧪 Testing
+
 Tests are located in the `app/test/` directory.
 Run them using `pytest` (support coming soon).
 
 ---
 
 ## ✨ Upcoming Features
+
 - Role-based permissions (event creator vs attendee)
 - Real-time RSVP count updates
 - Notification system (email reminders, RSVP updates)
@@ -210,4 +236,5 @@ Run them using `pytest` (support coming soon).
 ---
 
 ## 📄 License
+
 MIT License
