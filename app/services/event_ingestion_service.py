@@ -4,6 +4,7 @@ from typing import List
 from app.repositories.event_ingestion_repository import EventIngestionRepository
 from app.auth.firebase_init import get_firestore_client
 from app.utils.event_parser import ticketmaster_to_sahana_format
+from app.services.event_scraping_service import scrape_eventbrite
 
 # Repo is used for all DB operations
 repo = EventIngestionRepository()
@@ -91,6 +92,11 @@ def ingest_events_for_all_cities() -> dict:
 
     for city, state in get_unique_user_locations():
         events = fetch_ticketmaster_events(city, state)
+        try:
+            eb_events = scrape_eventbrite(city, state)
+            events.extend(eb_events)
+        except Exception as e:
+            print(f"[ERROR] Eventbrite scraping failed for {city}, {state}: {e}")
         result = ingest_bulk_events(events)
         total_events += result["saved"]
         summary.append(f"{result['saved']} new events for {city}, {state}")

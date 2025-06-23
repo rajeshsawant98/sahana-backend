@@ -2,7 +2,7 @@ from playwright.sync_api import sync_playwright
 import json
 import time
 
-def fetch_event_details(context, event_url, city, state):
+def fetch_event_details(context, event_url):
     from datetime import datetime, timezone
     from uuid import uuid4
 
@@ -25,14 +25,22 @@ def fetch_event_details(context, event_url, city, state):
     event = server_data.get("event", {})
     components = server_data.get("components", {})
 
-    result = build_event_object(event, components, city, state, server_data)
+    result = build_event_object(event, components, server_data)
 
     page.close()
     return result
 
-def build_event_object(event, components, city, state, server_data):
+def build_event_object(event, components, server_data):
     from datetime import datetime, timezone
     from uuid import uuid4
+
+    try:
+        city = components.get("eventDetails", {}).get("location", {}).get("venueMultilineAddress", [None, "Unknown, XX"])[1].split(",")[0].strip()
+        print(f"City extracted: {city}")
+    except Exception:
+        city = "Unknown"
+    state = server_data.get("event", {}).get("venue", {}).get("region", "XX")
+    print(f"State extracted: {state}")
 
     image_url = server_data.get("event_listing_response", {}).get("schemaInfo", {}).get("schemaImageUrl", None)
     organizer_data = components.get("organizer", {})
@@ -161,7 +169,7 @@ def scrape_eventbrite(city="Tempe", state="AZ", max_scrolls=10):
                 continue
 
             try:
-                details = fetch_event_details(context, href, city, state)
+                details = fetch_event_details(context, href)
                 if not details:
                     print(f"❌ Skipping event due to missing details: {href}")
                     continue

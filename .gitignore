@@ -5,4 +5,11 @@ __pycache__/
 *.env
 .env
 .gcloudignore
+
 firebase_cred.json
+eventbrite_events.json
+eventbrite_data.json
+scraped_urls.log
+failed_urls.log
+
+
