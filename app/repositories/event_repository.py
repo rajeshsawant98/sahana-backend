@@ -144,7 +144,7 @@ class EventRepository:
 
             try:
                 created_date = datetime.fromisoformat(created_at).date()
-                if created_date < today:
+                if created_date <= today:
                     if self.delete_event(event_id):
                         print(f"🗑️ Deleted event: {event_id} ({data.get('eventName')})")
                         deleted_count += 1

@@ -51,7 +51,7 @@ def run_ingestion_for_all_cities():
     print(f"Total Events Saved    : {result['total_events']}")
     print(f"Total Cities Processed: {result['processed_cities']}")
     print("\nDetails:")
-    for detail in result["details"]:
+    for detail in result["summary"]:
         print(f"• {detail}")
 
 

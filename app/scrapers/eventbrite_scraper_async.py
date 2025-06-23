@@ -1,9 +1,50 @@
 import asyncio
 from urllib.parse import urljoin
-import time
 import json
 from playwright.async_api import async_playwright
 from app.utils.event_parser import parse_eventbrite_data
+
+# Limit concurrency to avoid tab/memory overload
+semaphore = asyncio.Semaphore(10)
+
+async def fetch_event_detail(context, href, seen_links):
+    async with semaphore:
+        if href in seen_links:
+            return None
+
+        page = await context.new_page()
+        try:
+            await page.goto(href, timeout=30000, wait_until="domcontentloaded")
+            await asyncio.sleep(1.5)  # Give time for window.__SERVER_DATA__ to be injected
+
+            server_data = await page.evaluate("window.__SERVER_DATA__")
+
+            if not server_data:
+                print(f"[WARN] No window.__SERVER_DATA__ found at {href}")
+                return None
+
+            # Handle stringified JSON inside JS variable
+            for _ in range(2):
+                if isinstance(server_data, str):
+                    try:
+                        server_data = json.loads(server_data)
+                    except json.JSONDecodeError:
+                        break
+
+            if isinstance(server_data, dict):
+                event = parse_eventbrite_data(server_data)
+                seen_links.add(href)
+                return event
+
+            print(f"[ERROR] Invalid server_data at {href} — type={type(server_data)}")
+
+        except Exception as e:
+            print(f"[ERROR] Failed to scrape {href}: {e}")
+        finally:
+            await page.close()
+
+        return None
+
 
 async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen_links=None):
     if seen_links is None:
@@ -12,14 +53,14 @@ async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen
     results = []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, slow_mo=100)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(user_agent=(
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
             "Chrome/114.0.0.0 Safari/537.36"
         ))
-        page = await context.new_page()
 
+        page = await context.new_page()
         url = f"https://www.eventbrite.com/d/{state.lower()}--{city.lower()}/all-events/"
         print(f"🔍 Navigating to {url}")
         await page.goto(url, timeout=60000)
@@ -27,7 +68,7 @@ async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen
         for _ in range(max_scrolls):
             await page.mouse.wheel(0, 6000)
             await asyncio.sleep(1.5)
-        await asyncio.sleep(3)
+        await asyncio.sleep(2)
 
         elements = await page.query_selector_all("a[href*='/e/']")
         links = {
@@ -36,40 +77,15 @@ async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen
             if await el.get_attribute("href")
         }
 
-        for href in links:
-            if href in seen_links:
-                continue
+        await page.close()
 
-            detail_page = await context.new_page()
-            try:
-                await detail_page.goto(href, timeout=30000, wait_until="networkidle")
-                await detail_page.wait_for_timeout(3000)
-                server_data = await detail_page.evaluate("window.__SERVER_DATA__")
+        # Concurrent fetch
+        tasks = [fetch_event_detail(context, href, seen_links) for href in links]
+        events = await asyncio.gather(*tasks)
 
-                # Handle stringified server_data
-                attempts = 0
-                while isinstance(server_data, str) and attempts < 2:
-                    try:
-                        server_data = json.loads(server_data)
-                        attempts += 1
-                    except json.JSONDecodeError:
-                        print(f"[ERROR] Failed to decode server_data at {href}")
-                        server_data = None
-                        break
-
-                if isinstance(server_data, dict):
-                    parsed = parse_eventbrite_data(server_data)
-                    results.append(parsed)
-                    seen_links.add(href)
-                else:
-                    print(f"[ERROR] Invalid server_data at {href} ({type(server_data)})")
-
-            except Exception as e:
-                print(f"[ERROR] Skipping {href}: {e}")
-            finally:
-                await detail_page.close()
+        results.extend([e for e in events if e])
 
         await browser.close()
 
-    print(f"✅ Scraped {len(results)} events.")
+    print(f"✅ Scraped {len(results)} events from Eventbrite.")
     return results

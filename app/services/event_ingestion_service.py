@@ -95,16 +95,27 @@ async def ingest_events_for_all_cities() -> dict:
     url_cache = load_url_cache()
 
     for city, state in get_unique_user_locations():
+        events = []
+
+        # 1. Fetch from Ticketmaster (sync)
+        try:
+            tm_events = fetch_ticketmaster_events(city, state)
+            events.extend(tm_events)
+        except Exception as e:
+            print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")
+
+        # 2. Fetch from Eventbrite (async)
         try:
             eb_events = await get_eventbrite_events(city, state, seen_links=url_cache)
+            events.extend(eb_events)
         except Exception as e:
             print(f"[ERROR] Eventbrite scraping failed for {city}, {state}: {e}")
-            eb_events = []
 
-        saved = sum(1 for ev in eb_events if repo.save_event(ev))
-        total_events += saved
-        summary.append(f"{saved} new events for {city}, {state}")
-
+        # 3. Ingest into Firestore (with deduplication)
+        result = ingest_bulk_events(events)
+        total_events += result["saved"]
+        summary.append(f"{result['saved']} new events for {city}, {state}")
+        
     save_url_cache(url_cache)
 
     return {
