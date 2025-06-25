@@ -133,7 +133,7 @@ def list_external_events(city: str = Query(...), state: str = Query(...), curren
 
 # Nearby community events (internal) by city/state
 @event_router.get("/location/nearby")
-def list_nearby_events(city: str = Query(...), state: str = Query(...), current_user: dict = Depends(user_only)):
+def list_nearby_events(city: str = Query(...), state: str = Query(...)):
     events = get_nearby_events(city, state)
     return {"events": events, "count": len(events)}
 
