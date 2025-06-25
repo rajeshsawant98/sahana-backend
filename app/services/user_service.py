@@ -36,3 +36,6 @@ def validate_user_emails(email_list: list[str]) -> dict:
         "valid": valid,
         "invalid": invalid
     }
+
+def get_all_users():
+    return repo.get_all_users()

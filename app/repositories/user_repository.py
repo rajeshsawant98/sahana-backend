@@ -7,6 +7,14 @@ class UserRepository:
     def __init__(self):
         self.db = get_firestore_client()
         self.collection = self.db.collection("users")
+    
+    def get_all_users(self):
+        try:
+            users = self.collection.stream()
+            return [user.to_dict() for user in users]
+        except Exception as e:
+            print(f"Error retrieving users: {str(e)}")
+            return []
 
     def get_by_email(self, email: str):
         try:
