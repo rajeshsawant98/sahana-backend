@@ -22,6 +22,8 @@ class EventRepository:
             "imageUrl": data.get("imageUrl", ""),
             "createdBy": data["createdBy"],
             "createdByEmail": data["createdByEmail"],
+            "organizers": data.get("organizers", []),
+            "moderators": data.get("moderators", []),
             "createdAt": datetime.utcnow().isoformat(),
             "description": data.get("description", "No description available"),
             "rsvpList": [],
@@ -81,6 +83,14 @@ class EventRepository:
 
     def get_user_rsvps(self, user_email: str) -> list[dict]:
         query = self.collection.where("rsvpList", "array_contains", user_email).stream()
+        return [doc.to_dict() for doc in query]
+    
+    def get_events_organized_by_user(self, user_email: str) -> list[dict]:
+        query = self.collection.where("organizers", "array_contains", user_email).stream()
+        return [doc.to_dict() for doc in query]
+    
+    def get_events_moderated_by_user(self, user_email: str) -> list[dict]:
+        query = self.collection.where("moderators", "array_contains", user_email).stream()
         return [doc.to_dict() for doc in query]
 
     def get_rsvp_list(self, event_id: str) -> list[str]:

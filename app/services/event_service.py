@@ -65,6 +65,21 @@ def get_user_rsvps(email: str):
         print(f"Error in get_user_rsvps: {e}")
         return []
 
+def get_events_organized_by_user(email: str):
+    try:
+        return event_repo.get_events_organized_by_user(email)
+    except Exception as e:
+        print(f"Error in get_events_organized_by_user: {e}")
+        return []
+
+def get_events_moderated_by_user(email: str):
+    try:
+        return event_repo.get_events_moderated_by_user(email)
+    except Exception as e:
+        print(f"Error in get_events_moderated_by_user: {e}")
+        return []   
+
+
 def get_rsvp_list(event_id: str):
     try:
         return event_repo.get_rsvp_list(event_id)
@@ -96,10 +111,10 @@ def set_organizers(event_id: str, emails: list[str], creator_email: str) -> dict
     if creator_email not in valid_emails:
         valid_emails.append(creator_email)
 
-    success = event_repo.update_event_roles(event_id, "organizerIds", valid_emails)
+    success = event_repo.update_event_roles(event_id, "organizers", valid_emails)
     return {
         "success": success,
-        "organizerIds": valid_emails,
+        "organizers": valid_emails,
         "skipped": invalid_emails
     }
 
@@ -108,10 +123,10 @@ def set_moderators(event_id: str, emails: list[str]) -> dict:
     valid_emails = result["valid"]
     invalid_emails = result["invalid"]
 
-    success = event_repo.update_event_roles(event_id, "moderatorIds", valid_emails)
+    success = event_repo.update_event_roles(event_id, "moderators", valid_emails)
     return {
         "success": success,
-        "moderatorIds": valid_emails,
+        "moderators": valid_emails,
         "skipped": invalid_emails
     }
     

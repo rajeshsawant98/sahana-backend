@@ -3,6 +3,8 @@ from app.services.event_service import (
     create_event,
     get_all_events,
     get_event_by_id,
+    get_events_moderated_by_user,
+    get_events_organized_by_user,
     update_event,
     delete_event,
     get_my_events,
@@ -13,6 +15,7 @@ from app.services.event_service import (
     get_external_events,
     set_organizers,
     set_moderators
+
 )
 
 from app.services.event_ingestion_service import (
@@ -107,6 +110,30 @@ async def fetch_user_rsvped_events(current_user: dict = Depends(user_only)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# Events organized by user
+@event_router.get("/me/organized")
+async def fetch_user_organized_events(current_user: dict = Depends(user_only)):
+    try:
+        email = current_user["email"]
+        events = get_events_organized_by_user(email)
+        if not events:
+            raise HTTPException(status_code=404, detail="No organized events found")
+        return {"message": "Organized events fetched", "events": events}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Events moderated by user
+@event_router.get("/me/moderated")
+async def fetch_user_moderated_events(current_user: dict = Depends(user_only)):
+    try:
+        email = current_user["email"]
+        events = get_events_moderated_by_user(email)
+        if not events:
+            raise HTTPException(status_code=404, detail="No moderated events found")
+        return {"message": "Moderated events fetched", "events": events}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) 
+    
 # Fetch + Ingest Ticketmaster events (per city/state)
 @event_router.post("/fetch-ticketmaster-events")
 def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict = Depends(admin_only)):
