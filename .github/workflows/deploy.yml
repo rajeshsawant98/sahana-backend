@@ -36,6 +36,7 @@ jobs:
           gcloud run deploy sahana-backend \
             --image gcr.io/sahana-deaf0/sahana-backend \
             --platform managed \
+            --memory 1Gi \  
             --region us-west1 \
             --allow-unauthenticated \
             --set-env-vars FIREBASE_CRED_SECRET=${{ secrets.FIREBASE_CRED_SECRET }},FIREBASE_CRED_PATH=${{ secrets.FIREBASE_CRED_PATH }},JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }},JWT_REFRESH_SECRET_KEY=${{ secrets.JWT_REFRESH_SECRET_KEY }},GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }},GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }},TICKETMASTER_API_KEY=${{ secrets.TICKETMASTER_API_KEY }}
