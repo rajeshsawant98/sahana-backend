@@ -1,7 +1,7 @@
 import json
 import os
 
-CACHE_FILE = "app/cache/seen_event_urls.json"
+CACHE_FILE = "/tmp/seen_event_urls.json" 
 
 def load_url_cache():
     if not os.path.exists(CACHE_FILE):

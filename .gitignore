@@ -1,15 +1,22 @@
+# Runtime
 venv/
 __pycache__/
 .DS_Store
+*.log
 *.sqlite
-*.env
-.env
-.gcloudignore
 
+# Secrets
+.env
+*.env
 firebase_cred.json
+
+# Caching
+app/cache/*
+!app/cache/.gitkeep
+
+# Data
 eventbrite_events.json
 eventbrite_data.json
 
-app/cache/
-*.log
-
+# Cloud
+.gcloudignore

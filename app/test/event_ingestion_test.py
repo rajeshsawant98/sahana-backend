@@ -99,8 +99,8 @@ if __name__ == "__main__":
 
     #show_sample_ticketmaster_events("Tempe", "AZ")
     #show_all_user_locations()
-    run_ingestion_for_all_cities()
+    #run_ingestion_for_all_cities()
     # backfill_user_events_metadata()
     # migrate_ticketmaster_events()
-    #delete_old_events()  # This will delete events older than 1 year
+    delete_old_events()  # This will delete events older than 1 year
     pass
