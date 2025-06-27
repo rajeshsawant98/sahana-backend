@@ -123,3 +123,32 @@ async def ingest_events_for_all_cities() -> dict:
         "processed_cities": len(summary),
         "summary": summary
     }
+    
+
+async def ingest_ticketmaster_events_for_all_cities() -> dict:
+    from app.services.event_ingestion_service import get_unique_user_locations  # keep here to avoid circular import
+
+    total_events = 0
+    summary = []
+
+    for city, state in get_unique_user_locations():
+        events = []
+
+        # 1. Fetch from Ticketmaster (sync)
+        try:
+            tm_events = fetch_ticketmaster_events(city, state)
+            events.extend(tm_events)
+        except Exception as e:
+            print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")
+
+
+        # 3. Ingest into Firestore (with deduplication)
+        result = ingest_bulk_events(events)
+        total_events += result["saved"]
+        summary.append(f"{result['saved']} new events for {city}, {state}")
+
+    return {
+        "total_events": total_events,
+        "processed_cities": len(summary),
+        "summary": summary
+    }
