@@ -68,7 +68,6 @@ All the endpoints below support optional pagination. Simply add `page=1` (or any
     - `end_date` (string): Filter by end date (ISO format)
 
 **Examples**:
-
 ```bash
 # Legacy mode (no pagination)
 GET /api/events?city=Austin&state=Texas

@@ -77,6 +77,24 @@ FIREBASE_CRED_PATH=/tmp/firebase_cred.json
 uvicorn app.main:app --reload
 ```
 
+The server will start at `http://localhost:8000`. Visit `http://localhost:8000/docs` for interactive API documentation.
+
+---
+
+## 📚 Documentation
+
+Comprehensive documentation is available in the [`docs/`](docs/) folder:
+
+- **[API Guide](docs/api/overview.md)** - Complete API reference and examples
+- **[Quick Start](docs/setup/quick-start.md)** - Get up and running quickly
+- **[Authentication](docs/api/authentication.md)** - Auth system documentation
+- **[Events API](docs/api/events.md)** - Event management endpoints
+- **[RSVP System](docs/api/rsvp.md)** - RSVP functionality
+- **[Pagination](docs/api/pagination.md)** - Pagination usage guide
+- **[Docker Deployment](docs/deployment/docker.md)** - Containerized deployment
+
+For interactive API exploration, visit: `http://localhost:8000/docs`
+
 ---
 
 ## 📦 Project Structure
