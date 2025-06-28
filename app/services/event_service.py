@@ -1,5 +1,7 @@
 from app.repositories.event_repository import EventRepository
 from app.services.user_service import validate_user_emails
+from app.models.pagination import PaginationParams, EventPaginatedResponse, EventFilters
+from typing import Optional
 
 event_repo = EventRepository()
 
@@ -133,3 +135,66 @@ def set_moderators(event_id: str, emails: list[str]) -> dict:
 
 def delete_old_events() -> int:
     return event_repo.delete_events_before_today()
+
+def get_all_events_paginated(pagination: PaginationParams, filters: Optional[EventFilters] = None) -> EventPaginatedResponse:
+    """Get paginated events with optional filters"""
+    try:
+        events, total_count = event_repo.get_all_events_paginated(pagination, filters)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_all_events_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_my_events_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated events created by user"""
+    try:
+        events, total_count = event_repo.get_events_by_creator_paginated(email, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_my_events_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_user_rsvps_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated events user has RSVP'd to"""
+    try:
+        events, total_count = event_repo.get_user_rsvps_paginated(email, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_user_rsvps_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_events_organized_by_user_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated events organized by user"""
+    try:
+        events, total_count = event_repo.get_events_organized_by_user_paginated(email, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_events_organized_by_user_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_events_moderated_by_user_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated events moderated by user"""
+    try:
+        events, total_count = event_repo.get_events_moderated_by_user_paginated(email, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_events_moderated_by_user_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_nearby_events_paginated(city: str, state: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated nearby events"""
+    try:
+        events, total_count = event_repo.get_nearby_events_paginated(city, state, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_nearby_events_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+
+def get_external_events_paginated(city: str, state: str, pagination: PaginationParams) -> EventPaginatedResponse:
+    """Get paginated external events"""
+    try:
+        events, total_count = event_repo.get_external_events_paginated(city, state, pagination)
+        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_external_events_paginated: {e}")
+        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)

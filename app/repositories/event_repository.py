@@ -1,6 +1,8 @@
 from datetime import datetime
 from google.cloud.firestore_v1 import ArrayRemove
 from app.auth.firebase_init import get_firestore_client
+from app.models.pagination import PaginationParams, EventFilters
+from typing import Tuple, List, Optional
 
 class EventRepository:
     def __init__(self):
@@ -163,3 +165,127 @@ class EventRepository:
 
         print(f"✅ Deleted {deleted_count} old events.")
         return deleted_count
+    
+    def get_all_events_paginated(self, pagination: PaginationParams, filters: Optional[EventFilters] = None) -> Tuple[List[dict], int]:
+        """Get paginated events with optional filters"""
+        query = self.collection
+        
+        # Apply filters if provided
+        if filters:
+            if filters.city:
+                query = query.where("location.city", "==", filters.city)
+            if filters.state:
+                query = query.where("location.state", "==", filters.state)
+            if filters.category:
+                query = query.where("categories", "array_contains", filters.category)
+            if filters.is_online is not None:
+                query = query.where("isOnline", "==", filters.is_online)
+            if filters.creator_email:
+                query = query.where("createdByEmail", "==", filters.creator_email)
+            if filters.start_date:
+                query = query.where("startTime", ">=", filters.start_date)
+            if filters.end_date:
+                query = query.where("startTime", "<=", filters.end_date)
+        
+        # Order by creation time (most recent first)
+        query = query.order_by("createdAt", direction="DESCENDING")
+        
+        # Get total count for pagination metadata
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_events_by_creator_paginated(self, email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated events created by a specific user"""
+        query = self.collection.where("createdByEmail", "==", email).order_by("createdAt", direction="DESCENDING")
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_user_rsvps_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated events that user has RSVP'd to"""
+        query = self.collection.where("rsvpList", "array_contains", user_email).order_by("startTime")
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_events_organized_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated events organized by a specific user"""
+        query = self.collection.where("organizers", "array_contains", user_email).order_by("createdAt", direction="DESCENDING")
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_events_moderated_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated events moderated by a specific user"""
+        query = self.collection.where("moderators", "array_contains", user_email).order_by("createdAt", direction="DESCENDING")
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_nearby_events_paginated(self, city: str, state: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated nearby events for a specific location"""
+        query = (
+            self.collection
+            .where("location.city", "==", city)
+            .where("location.state", "==", state)
+            .order_by("startTime")
+        )
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        return events, total_count
+
+    def get_external_events_paginated(self, city: str, state: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
+        """Get paginated external events for a specific location"""
+        print(f"📥 Querying external events for city: {city}, state: {state} (paginated)")
+        query = (
+            self.collection
+            .where("origin", "==", "external")
+            .where("location.city", "==", city)
+            .where("location.state", "==", state)
+            .order_by("startTime")
+        )
+        
+        # Get total count
+        total_count = len(list(query.stream()))
+        
+        # Apply pagination
+        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+        events = [doc.to_dict() for doc in query_paginated.stream()]
+        
+        print(f"📤 Found {len(events)} external events (page {pagination.page})")
+        return events, total_count

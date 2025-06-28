@@ -1,5 +1,7 @@
 from passlib.context import CryptContext
 from app.auth.firebase_init import get_firestore_client
+from app.models.pagination import PaginationParams, UserFilters
+from typing import Tuple, List, Optional
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -15,6 +17,33 @@ class UserRepository:
         except Exception as e:
             print(f"Error retrieving users: {str(e)}")
             return []
+
+    def get_all_users_paginated(self, pagination: PaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], int]:
+        """Get paginated users with optional filters"""
+        try:
+            query = self.collection
+            
+            # Apply filters if provided
+            if filters:
+                if filters.role:
+                    query = query.where("role", "==", filters.role)
+                if filters.profession:
+                    query = query.where("profession", "==", filters.profession)
+            
+            # Order by email for consistent pagination
+            query = query.order_by("email")
+            
+            # Get total count
+            total_count = len(list(query.stream()))
+            
+            # Apply pagination
+            query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+            users = [user.to_dict() for user in query_paginated.stream()]
+            
+            return users, total_count
+        except Exception as e:
+            print(f"Error retrieving paginated users: {str(e)}")
+            return [], 0
 
     def get_by_email(self, email: str):
         try:

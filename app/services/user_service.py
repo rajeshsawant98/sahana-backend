@@ -1,4 +1,6 @@
 from app.repositories.user_repository import UserRepository
+from app.models.pagination import PaginationParams, UserPaginatedResponse, UserFilters
+from typing import Optional
 
 repo = UserRepository()
 
@@ -39,3 +41,12 @@ def validate_user_emails(email_list: list[str]) -> dict:
 
 def get_all_users():
     return repo.get_all_users()
+
+def get_all_users_paginated(pagination: PaginationParams, filters: Optional[UserFilters] = None) -> UserPaginatedResponse:
+    """Get paginated users with optional filters"""
+    try:
+        users, total_count = repo.get_all_users_paginated(pagination, filters)
+        return UserPaginatedResponse.create(users, total_count, pagination.page, pagination.page_size)
+    except Exception as e:
+        print(f"Error in get_all_users_paginated: {e}")
+        return UserPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
