@@ -1,6 +1,7 @@
 from passlib.context import CryptContext
 from app.auth.firebase_init import get_firestore_client
 from app.models.pagination import PaginationParams, UserFilters
+from app.utils.logger import get_service_logger
 from typing import Tuple, List, Optional
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -9,13 +10,14 @@ class UserRepository:
     def __init__(self):
         self.db = get_firestore_client()
         self.collection = self.db.collection("users")
+        self.logger = get_service_logger(__name__)
     
     def get_all_users(self):
         try:
             users = self.collection.stream()
             return [user.to_dict() for user in users]
         except Exception as e:
-            print(f"Error retrieving users: {str(e)}")
+            self.logger.error(f"Error retrieving users: {str(e)}")
             return []
 
     def get_all_users_paginated(self, pagination: PaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], int]:
@@ -42,24 +44,34 @@ class UserRepository:
             
             return users, total_count
         except Exception as e:
-            print(f"Error retrieving paginated users: {str(e)}")
+            self.logger.error(f"Error retrieving paginated users: {str(e)}")
             return [], 0
 
     def get_by_email(self, email: str):
         try:
             query = self.collection.where("email", "==", email).stream()
             user = next(query, None)
-            return user.to_dict() if user else None
+            if user:
+                user_data = user.to_dict()
+                if user_data:  # Check that user_data is not None
+                    user_data["id"] = user.id  # Include the document ID
+                    return user_data
+            return None
         except Exception as e:
-            print(f"Error retrieving user: {str(e)}")
+            self.logger.error(f"Error retrieving user: {str(e)}")
             return None
 
     def get_by_id(self, uid: str):
         try:
             doc = self.collection.document(uid).get()
-            return doc.to_dict() if doc.exists else None
+            if doc.exists:
+                user_data = doc.to_dict()
+                if user_data:
+                    user_data["id"] = doc.id  # Include the document ID
+                    return user_data
+            return None
         except Exception as e:
-            print(f"Error retrieving user by ID: {str(e)}")
+            self.logger.error(f"Error retrieving user by ID: {str(e)}")
             return None
 
     def create_with_password(self, email: str, password: str, name: str):
@@ -71,9 +83,9 @@ class UserRepository:
                 "password": hashed_password,
                 "role": "user"
             })
-            print(f"User with email {email} stored successfully")
+            self.logger.info(f"User with email {email} stored successfully")
         except Exception as e:
-            print(f"Error storing user with password: {str(e)}")
+            self.logger.error(f"Error storing user with password: {str(e)}")
 
     def verify_password(self, email: str, password: str):
         try:
@@ -87,20 +99,22 @@ class UserRepository:
 
             return pwd_context.verify(password, user["password"])
         except Exception as e:
-            print(f"Error verifying password: {str(e)}")
+            self.logger.error(f"Error verifying password: {str(e)}")
             return False
 
     def store_google_user(self, user_data: dict):
         try:
-            self.collection.document(user_data["uid"]).set({
+            # Use email as document ID for all users (including Google users)
+            self.collection.document(user_data["email"]).set({
                 "name": user_data["name"],
                 "email": user_data["email"],
                 "profile_picture": user_data["profile_picture"],
+                "google_uid": user_data.get("uid"),  # Store Google UID as a field for reference
                 "role": "user"
             }, merge=True)
-            print(f"User data stored for: {user_data['email']}")
+            self.logger.info(f"User data stored for: {user_data['email']}")
         except Exception as e:
-            print(f"Error storing Google user: {str(e)}")
+            self.logger.error(f"Error storing Google user: {str(e)}")
 
     def update_profile_by_email(self, user_data: dict, user_email: str):
         try:
@@ -108,7 +122,7 @@ class UserRepository:
             user = next(query, None)
 
             if not user:
-                print(f"No user found with email: {user_email}")
+                self.logger.warning(f"No user found with email: {user_email}")
                 return
 
             user_ref = self.collection.document(user.id)
@@ -126,6 +140,6 @@ class UserRepository:
             }
 
             user_ref.update(update_fields)
-            print(f"User profile updated for: {user_email}")
+            self.logger.info(f"User profile updated for: {user_email}")
         except Exception as e:
-            print(f"Error updating user data: {str(e)}")
+            self.logger.error(f"Error updating user data: {str(e)}")

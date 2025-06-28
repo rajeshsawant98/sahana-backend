@@ -217,6 +217,28 @@ Configurable user preferences:
 ## Integration with Other APIs
 
 User information is included in:
+
 - Event responses (creator information)
 - RSVP lists (attendee information)
 - Event creation/updates (ownership validation)
+- **Friends system** (friend profiles and search results)
+
+### Friend System Integration
+
+Users can connect with each other through the Friends API:
+
+- **Search Users**: Find other users by name or email to send friend requests
+- **Friend Requests**: Send, accept, reject, and cancel friend requests
+- **Friends List**: View and manage connections with other users
+- **Profile Sharing**: Friend profiles include public user information
+
+See the [Friends API documentation](./friends.md) for detailed information about the friend system endpoints.
+
+### Social Features
+
+When users have friends, additional social features become available:
+
+- **Mutual Friends**: See common connections between users
+- **Friend Events**: View events created or attended by friends
+- **Social Discovery**: Enhanced event recommendations based on friend activity
+- **Group Formation**: Create events with friend groups

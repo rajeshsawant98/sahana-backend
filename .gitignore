@@ -18,5 +18,8 @@ app/cache/*
 eventbrite_events.json
 eventbrite_data.json
 
+# Logs
+*.log
+
 # Cloud
 .gcloudignore

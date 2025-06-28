@@ -68,6 +68,7 @@ All the endpoints below support optional pagination. Simply add `page=1` (or any
     - `end_date` (string): Filter by end date (ISO format)
 
 **Examples**:
+
 ```bash
 # Legacy mode (no pagination)
 GET /api/events?city=Austin&state=Texas
@@ -188,10 +189,11 @@ curl -H "Authorization: Bearer <admin-token>" \
 ## Event Origin Types
 
 Events in the system have an `origin` field that indicates their source:
+
 - **external**: Events imported from external sources (Ticketmaster, etc.)
 - **community**: Events created by users within the platform
 
-### Endpoint Behavior by Origin:
+### Endpoint Behavior by Origin
 
 - **Nearby Events** (`/api/events/location/nearby`): Returns **all events** regardless of origin
 - **External Events** (`/api/events/location/external`): Returns **only external events** (`origin="external"`)
