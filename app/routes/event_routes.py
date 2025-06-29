@@ -28,7 +28,10 @@ from app.services.event_service import (
     get_archived_events,
     get_archived_events_paginated,
     archive_past_events,
-    get_rsvp_list
+    get_rsvp_list,
+    get_rsvp_response_data,
+    get_paginated_rsvp_list,
+    archive_event_with_validation
 )
 
 from app.services.event_ingestion_service import (
@@ -158,27 +161,24 @@ async def archive_event_endpoint(
     archive_data: dict = Body({"reason": "Event archived"}),
     current_user: dict = Depends(require_event_creator)
 ):
-    # Get the event to check if it exists and if it's in the past
-    event = get_event_by_id(event_id)
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    
-    # Check if event is in the past (optional validation)
-    if not is_event_past(event):
-        # You can choose to allow or disallow archiving future events
-        # For now, we'll allow it but add a warning in the response
-        pass
-    
+    """Archive an event with validation"""
     reason = archive_data.get("reason", "Event archived")
     archived_by = current_user["email"]
     
-    success = archive_event(event_id, archived_by, reason)
-    if success:
-        message = "Event archived successfully"
-        if not is_event_past(event):
-            message += " (Note: This event has not ended yet)"
-        return {"message": message, "archived_by": archived_by, "reason": reason}
-    raise HTTPException(status_code=500, detail="Failed to archive event")
+    result = archive_event_with_validation(event_id, archived_by, reason)
+    
+    if result["success"]:
+        return {
+            "message": result["message"],
+            "archived_by": result["archived_by"],
+            "reason": result["reason"]
+        }
+    else:
+        error_type = result.get("error_type", "server_error")
+        if error_type == "not_found":
+            raise HTTPException(status_code=404, detail=result["error"])
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
 
 # Unarchive event (creator only)
 @event_router.patch("/{event_id}/unarchive")
@@ -344,7 +344,7 @@ async def update_event_organizers(
     if result["success"]:
         return {
             "message": "Organizers updated",
-            "organizerIds": result["organizerIds"],
+            "organizers": result["organizers"],  # Changed from "organizerIds" to "organizers"
             "skipped": result["skipped"]
         }
     raise HTTPException(status_code=500, detail="Failed to update organizers")
@@ -365,7 +365,7 @@ async def update_event_moderators(
     if result["success"]:
         return {
             "message": "Moderators updated",
-            "moderatorIds": result["moderatorIds"],
+            "moderators": result["moderators"],  # Changed from "moderatorIds" to "moderators"
             "skipped": result["skipped"]
         }
 
@@ -402,19 +402,7 @@ async def rsvp_to_event_endpoint(
         success = rsvp_to_event(event_id, email)
         
         if success:
-            # Get updated event info for response
-            event = get_event_by_id(event_id)
-            rsvp_list = event.get("rsvpList", []) if event else []
-            
-            return {
-                "message": "Successfully RSVP'd to event",
-                "rsvp_status": "going",
-                "event": {
-                    "id": event_id,
-                    "title": event.get("eventName", "") if event else "",
-                    "current_attendees": len(rsvp_list)
-                }
-            }
+            return get_rsvp_response_data(event_id, email, "created")
         else:
             raise HTTPException(status_code=500, detail="Failed to RSVP to event")
             
@@ -441,19 +429,7 @@ async def cancel_rsvp_endpoint(
         success = cancel_user_rsvp(event_id, email)
         
         if success:
-            # Get updated event info for response
-            event = get_event_by_id(event_id)
-            rsvp_list = event.get("rsvpList", []) if event else []
-            
-            return {
-                "message": "RSVP cancelled successfully",
-                "rsvp_status": None,
-                "event": {
-                    "id": event_id,
-                    "title": event.get("eventName", "") if event else "",
-                    "current_attendees": len(rsvp_list)
-                }
-            }
+            return get_rsvp_response_data(event_id, email, "cancelled")
         else:
             raise HTTPException(status_code=500, detail="Failed to cancel RSVP")
             
@@ -475,33 +451,8 @@ async def get_event_rsvps(
 ):
     """Get RSVP list for an event"""
     try:
-        rsvp_list = get_rsvp_list(event_id)
-        
-        if page is not None:
-            # Paginated response
-            page_size = page_size or 10
-            total_count = len(rsvp_list)
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            paginated_rsvps = rsvp_list[start_idx:end_idx]
-            
-            return {
-                "items": [{"user_email": email} for email in paginated_rsvps],
-                "pagination": {
-                    "page": page,
-                    "page_size": page_size,
-                    "total": total_count,
-                    "total_pages": (total_count + page_size - 1) // page_size,
-                    "has_next": end_idx < total_count,
-                    "has_prev": page > 1
-                }
-            }
-        else:
-            # Non-paginated response
-            return {
-                "rsvp_list": rsvp_list,
-                "total_count": len(rsvp_list)
-            }
+        page_size = page_size or 10
+        return get_paginated_rsvp_list(event_id, page, page_size)
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get RSVP list: {str(e)}")

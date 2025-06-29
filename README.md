@@ -1,4 +1,3 @@
-
 # Sahana Backend
 
 The backend for **Sahana**, a social meetup and event discovery platform. Built using **FastAPI**, connected to **Firebase** for authentication and Firestore as the primary database. This backend supports features such as event creation, RSVP system, user profiles, authentication, and location services.
@@ -94,6 +93,41 @@ Comprehensive documentation is available in the [`docs/`](docs/) folder:
 - **[Docker Deployment](docs/deployment/docker.md)** - Containerized deployment
 
 For interactive API exploration, visit: `http://localhost:8000/docs`
+
+---
+
+## 🏗️ Architecture
+
+Sahana Backend follows **Clean Architecture** principles with a well-designed separation of concerns:
+
+### Repository Pattern Implementation
+
+The data access layer uses a **specialized repository pattern** for optimal maintainability:
+
+- **BaseRepository**: Common functionality and modular query filters
+- **EventCrudRepository**: Basic CRUD operations  
+- **EventQueryRepository**: Complex queries and filtering
+- **EventArchiveRepository**: Archive management operations
+- **EventRsvpRepository**: RSVP-specific operations
+- **EventUserRepository**: User-specific event queries
+- **EventRepositoryManager**: Facade providing unified interface
+
+### Layer Architecture
+
+```
+Routes (Controllers) → Services (Business Logic) → Repositories (Data Access) → Database
+```
+
+**Key Benefits:**
+- ✅ **Maintainable**: Small, focused classes with single responsibilities
+- ✅ **Testable**: Each layer can be unit tested independently  
+- ✅ **Scalable**: Easy to extend with new features
+- ✅ **SOLID Compliant**: Follows all SOLID principles
+
+**Architecture Documentation:**
+- **[Repository Architecture Guide](docs/architecture/event-repository-architecture.md)** - Detailed implementation guide
+- **[Architecture Overview](docs/architecture/README.md)** - Complete architecture documentation
+- **[Work History](docs/WORK_LOG.md)** - Development history and decisions
 
 ---
 

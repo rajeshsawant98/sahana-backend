@@ -56,66 +56,7 @@ async def get_friend_requests(
     """Get all friend requests for the current user (both sent and received)"""
     try:
         requests = friend_service.get_friend_requests(current_user["email"])
-        
-        # Convert to dict format for JSON response
-        received_dicts = []
-        for req in requests["received"]:
-            received_dicts.append({
-                "id": req.id,
-                "sender": {
-                    "id": req.sender.id,
-                    "name": req.sender.name,
-                    "email": req.sender.email,
-                    "bio": req.sender.bio,
-                    "profile_picture": req.sender.profile_picture,
-                    "location": req.sender.location,
-                    "interests": req.sender.interests
-                },
-                "receiver": {
-                    "id": req.receiver.id,
-                    "name": req.receiver.name,
-                    "email": req.receiver.email,
-                    "bio": req.receiver.bio,
-                    "profile_picture": req.receiver.profile_picture,
-                    "location": req.receiver.location,
-                    "interests": req.receiver.interests
-                },
-                "status": req.status,
-                "created_at": req.created_at.isoformat() if req.created_at else None,
-                "updated_at": req.updated_at.isoformat() if req.updated_at else None
-            })
-        
-        sent_dicts = []
-        for req in requests["sent"]:
-            sent_dicts.append({
-                "id": req.id,
-                "sender": {
-                    "id": req.sender.id,
-                    "name": req.sender.name,
-                    "email": req.sender.email,
-                    "bio": req.sender.bio,
-                    "profile_picture": req.sender.profile_picture,
-                    "location": req.sender.location,
-                    "interests": req.sender.interests
-                },
-                "receiver": {
-                    "id": req.receiver.id,
-                    "name": req.receiver.name,
-                    "email": req.receiver.email,
-                    "bio": req.receiver.bio,
-                    "profile_picture": req.receiver.profile_picture,
-                    "location": req.receiver.location,
-                    "interests": req.receiver.interests
-                },
-                "status": req.status,
-                "created_at": req.created_at.isoformat() if req.created_at else None,
-                "updated_at": req.updated_at.isoformat() if req.updated_at else None
-            })
-        
-        return {
-            "received": received_dicts,
-            "sent": sent_dicts
-        }
+        return friend_service.format_friend_requests_response(requests)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get friend requests: {str(e)}")
@@ -189,24 +130,7 @@ async def get_friends_list(
     """Get the list of friends for the current user"""
     try:
         friends = friend_service.get_friends_list(current_user["email"])
-        
-        # Convert to dict format for JSON response
-        friends_dicts = []
-        for friend in friends:
-            friends_dicts.append({
-                "id": friend.id,
-                "name": friend.name,
-                "email": friend.email,
-                "bio": friend.bio,
-                "profile_picture": friend.profile_picture,
-                "location": friend.location,
-                "interests": friend.interests,
-                "events_created": friend.events_created,
-                "events_attended": friend.events_attended,
-                "created_at": friend.created_at.isoformat() if friend.created_at else None
-            })
-        
-        return friends_dicts
+        return friend_service.format_friends_list_response(friends)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get friends list: {str(e)}")
@@ -219,30 +143,13 @@ async def search_users(
 ) -> List[Dict[str, Any]]:
     """Search for users to send friend requests"""
     try:
-        if not q.strip():
-            return []
-            
         search_results = friend_service.search_users(
-            search_term=q.strip(),
+            search_term=q,
             user_email=current_user["email"],
             limit=limit
         )
         
-        # Convert to dict format for JSON response
-        results_dicts = []
-        for result in search_results:
-            results_dicts.append({
-                "id": result.id,
-                "name": result.name,
-                "email": result.email,
-                "bio": result.bio,
-                "profile_picture": result.profile_picture,
-                "location": result.location,
-                "interests": result.interests,
-                "friendship_status": result.friendship_status
-            })
-        
-        return results_dicts
+        return friend_service.format_user_search_response(search_results)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to search users: {str(e)}")

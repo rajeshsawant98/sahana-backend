@@ -20,7 +20,7 @@ def require_event_organizer(event_id: str, current_user: dict = Depends(get_curr
         raise HTTPException(status_code=404, detail="Event not found")
     if current_user.get("role") == "super_admin":
         return current_user
-    if current_user["email"] not in event.get("organizerIds", []):
+    if current_user["email"] not in event.get("organizers", []):
         raise HTTPException(status_code=403, detail="Organizer access required")
     return current_user
 
@@ -32,7 +32,7 @@ def require_event_moderator(event_id: str, current_user: dict = Depends(get_curr
     if current_user.get("role") == "super_admin":
         return current_user
     email = current_user["email"]
-    if email not in event.get("moderatorIds", []) and email not in event.get("organizerIds", []):
+    if email not in event.get("moderators", []) and email not in event.get("organizers", []):
         raise HTTPException(status_code=403, detail="Moderator or Organizer access required")
     return current_user
 

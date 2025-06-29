@@ -1,8 +1,8 @@
 import pytest
 import pytest
 from app.services.friend_service import friend_service
-from app.repositories.friend_repository import FriendRepository
-from app.repositories.user_repository import UserRepository
+from app.repositories.friends import FriendRepository
+from app.repositories.users import UserRepository
 from unittest.mock import Mock, patch
 
 class TestFriendService:

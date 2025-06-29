@@ -1,7 +1,7 @@
 import os
 import requests
 from typing import List
-from app.repositories.event_ingestion_repository import EventIngestionRepository
+from app.repositories.events import EventIngestionRepository
 from app.auth.firebase_init import get_firestore_client
 from app.utils.event_parser import ticketmaster_to_sahana_format
 from app.services.event_scraping_service import get_eventbrite_events

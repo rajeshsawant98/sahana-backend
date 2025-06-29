@@ -73,7 +73,7 @@ async def google_login(request: GoogleLoginRequest):
         role = user.get("role", "user")
 
         access_token = create_access_token(data={"email": user_data["email"], "role": role})
-        print(f"access_token: {access_token}")
+        # logger.debug(f"access_token: {access_token}")  # Debug log commented out
         refresh_token = create_refresh_token(data={"email": user_data["email"], "role": role})
 
         return {

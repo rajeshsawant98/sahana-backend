@@ -1,8 +1,10 @@
-from app.repositories.user_repository import UserRepository
+from app.repositories.users import UserRepository
 from app.models.pagination import PaginationParams, UserPaginatedResponse, UserFilters
+from app.utils.logger import get_service_logger
 from typing import Optional
 
 repo = UserRepository()
+logger = get_service_logger(__name__)
 
 def get_user_by_email(email: str):
     return repo.get_by_email(email)
@@ -48,5 +50,5 @@ def get_all_users_paginated(pagination: PaginationParams, filters: Optional[User
         users, total_count = repo.get_all_users_paginated(pagination, filters)
         return UserPaginatedResponse.create(users, total_count, pagination.page, pagination.page_size)
     except Exception as e:
-        print(f"Error in get_all_users_paginated: {e}")
+        logger.error(f"Error in get_all_users_paginated: {e}", exc_info=True)
         return UserPaginatedResponse.create([], 0, pagination.page, pagination.page_size)

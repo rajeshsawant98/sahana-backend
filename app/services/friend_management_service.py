@@ -1,5 +1,5 @@
-from app.repositories.friend_repository import FriendRepository
-from app.repositories.user_repository import UserRepository
+from app.repositories.friends import FriendRepository
+from app.repositories.users import UserRepository
 from app.models.friend import FriendProfile
 from app.utils.logger import get_service_logger, log_error_with_context, log_service_call
 from typing import List, Dict, Any, Optional
