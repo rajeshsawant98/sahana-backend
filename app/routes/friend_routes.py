@@ -255,12 +255,14 @@ async def get_friendship_status(
 ) -> Dict[str, str]:
     """Get the friendship status between current user and another user"""
     try:
-        from app.repositories.friend_repository import FriendRepository
-        friend_repo = FriendRepository()
+        result = friend_service.get_friendship_status(current_user["email"], user_id)
         
-        status = friend_repo.get_friendship_status(current_user["email"], user_id)
+        if result["success"]:
+            return {"friendship_status": result["friendship_status"]}
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
         
-        return {"friendship_status": status}
-        
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get friendship status: {str(e)}")
