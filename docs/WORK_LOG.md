@@ -581,6 +581,7 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 #### Issue Resolution: Firestore Query Limitations
 
 **Problem Identified:**
+
 - Firestore error: "Only a single 'NOT_EQUAL', 'NOT_IN', 'IS_NOT_NAN', or 'IS_NOT_NULL' filter allowed per query"
 - Error occurring in `get_user_event_summary()` method in `EventUserRepository`
 - Issue was caused by combining `isArchived != True` with other filters
@@ -588,15 +589,18 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 **Solution Implemented:**
 
 ##### 1. Updated EventUserRepository
+
 - **Modified `get_user_event_summary()`**: Removed base filter usage, implemented individual single filters
 - **Approach**: Use single Firestore filters (e.g., `createdByEmail == email`) then filter archived events in Python
 - **Manual Counting**: Count non-archived events in Python code after fetching from Firestore
 
 ##### 2. Verified EventRsvpRepository
+
 - **Already Updated**: Methods were previously refactored correctly
 - **Confirmed Working**: `get_user_rsvps()` and `get_user_rsvps_paginated()` use single filters
 
 ##### 3. Fixed EventQueryRepository
+
 - **Updated `get_nearby_events()`**: Single city filter, filters state/archived/origin in Python
 - **Updated `get_nearby_events_paginated()`**: Single city filter with manual pagination
 - **Updated `get_external_events()`**: Single city filter, filters state/archived/origin in Python  
@@ -606,6 +610,7 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 - **Enhanced Nearby Events**: Now includes both manual and external events for better UX
 
 ##### 4. Fixed EventArchiveRepository  
+
 - **Issue**: `__key__ filter value must be a Key` error in archive methods
 - **Root Cause**: Invalid use of `where("__name__", "!=", "")` filter
 - **Solution**: Replaced with single `isArchived == True` filter, manual filtering in Python
@@ -613,11 +618,13 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 - **Updated `get_archived_events_paginated()`**: Single filter with manual pagination
 
 ##### 5. Comprehensive Testing
+
 - **All Repository Methods Tested**: EventUserRepository, EventRsvpRepository, EventQueryRepository, and EventArchiveRepository
 - **Results**: All methods work without Firestore query errors
 - **Only Warnings**: Deprecation warnings about positional arguments (non-breaking)
 
 **Files Modified:**
+
 - `app/repositories/event_user_repository.py` - Fixed `get_user_event_summary()` method
 - `app/repositories/event_query_repository.py` - Fixed nearby events and external events methods, origin values
 - `app/repositories/event_archive_repository.py` - Fixed archive methods, removed invalid `__name__` filters
@@ -635,6 +642,7 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 ✅ `get_archived_events()` and `get_archived_events_paginated()` - **FIXED**
 
 **Technical Achievement:**
+
 - **100% Firestore Compatibility**: All repository methods work without query errors
 - **Maintained Performance**: Efficient single-filter queries with Python-based post-processing
 - **No Breaking Changes**: All existing functionality preserved
@@ -652,11 +660,13 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 #### Issue Resolution: Event Organizer/Moderator API Errors
 
 **Problem Identified:**
+
 - `KeyError: 'organizerIds'` in PATCH `/api/events/{event_id}/organizers` endpoint
 - `KeyError: 'moderatorIds'` in PATCH `/api/events/{event_id}/moderators` endpoint
 - 500 Internal Server Error preventing organizer/moderator updates
 
 **Root Cause Analysis:**
+
 - Service functions `set_organizers()` and `set_moderators()` return keys: `"organizers"`, `"moderators"`  
 - Route handlers were incorrectly expecting keys: `"organizerIds"`, `"moderatorIds"`
 - Mismatch between service return values and route expectations
@@ -664,25 +674,29 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 **Solution Applied:**
 
 ##### 1. Fixed PATCH /api/events/{event_id}/organizers
+
 - **Before**: `result["organizerIds"]` (KeyError)
 - **After**: `result["organizers"]` (matches service return)
 - **Response**: Now returns `"organizers": [...email list...]`
 
 ##### 2. Fixed PATCH /api/events/{event_id}/moderators  
+
 - **Before**: `result["moderatorIds"]` (KeyError)
 - **After**: `result["moderators"]` (matches service return)
 - **Response**: Now returns `"moderators": [...email list...]`
 
 **Files Modified:**
+
 - `app/routes/event_routes.py` - Fixed key names in organizer and moderator endpoints
 
 **Testing Results:**
 ✅ PATCH `/api/events/{event_id}/organizers` - **FIXED**
-✅ PATCH `/api/events/{event_id}/moderators` - **FIXED** 
+✅ PATCH `/api/events/{event_id}/moderators` - **FIXED**
 ✅ All other event endpoints - Still working correctly
 ✅ Service layer functions - Return correct key structures
 
 **Technical Achievement:**
+
 - **API Reliability**: Critical event management endpoints now functional
 - **Consistent Naming**: Route responses match service layer return values
 - **No Breaking Changes**: Response structure improved (returns email lists instead of IDs)
@@ -702,11 +716,13 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 **Problem:** 403 Forbidden error on PATCH `/api/events/{event_id}/moderators` endpoint
 
 **Root Cause:** Authorization functions checking incorrect field names:
+
 - `require_event_organizer()` checking `organizerIds` field (doesn't exist)
 - `require_event_moderator()` checking `moderatorIds`/`organizerIds` fields (don't exist)
 - Event documents actually use `organizers` and `moderators` fields (email arrays)
 
 **Solution:** Updated authorization functions in `app/auth/event_roles.py`:
+
 - `event.get("organizerIds", [])` → `event.get("organizers", [])`
 - `event.get("moderatorIds", [])` → `event.get("moderators", [])`
 
