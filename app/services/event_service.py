@@ -1,7 +1,8 @@
 from app.repositories.event_repository import EventRepository
 from app.services.user_service import validate_user_emails
-from app.models.pagination import PaginationParams, EventPaginatedResponse, EventFilters
+from app.models.pagination import PaginationParams, EventPaginatedResponse, EventFilters, PaginatedResponse
 from typing import Optional
+from datetime import datetime, timedelta
 
 event_repo = EventRepository()
 
@@ -48,15 +49,49 @@ def get_my_events(email: str):
         return []
 
 def rsvp_to_event(event_id: str, email: str):
+    """RSVP to event with business logic validation"""
     try:
+        # Check if event exists
+        event = event_repo.get_event_by_id(event_id)
+        if not event:
+            raise ValueError("Event not found")
+        
+        # Check if event is archived
+        if event.get("isArchived", False):
+            raise ValueError("Cannot RSVP to archived event")
+        
+        # Check if user is already RSVP'd
+        rsvp_list = event.get("rsvpList", [])
+        if email in rsvp_list:
+            raise ValueError("You have already RSVP'd to this event")
+        
+        # Perform RSVP
         return event_repo.rsvp_to_event(event_id, email)
+    except ValueError:
+        # Re-raise validation errors
+        raise
     except Exception as e:
         print(f"Error in rsvp_to_event: {e}")
         return False
 
 def cancel_user_rsvp(event_id: str, email: str):
+    """Cancel RSVP with business logic validation"""
     try:
+        # Check if event exists
+        event = event_repo.get_event_by_id(event_id)
+        if not event:
+            raise ValueError("Event not found")
+        
+        # Check if user has RSVP'd
+        rsvp_list = event.get("rsvpList", [])
+        if email not in rsvp_list:
+            raise ValueError("You have not RSVP'd to this event")
+        
+        # Cancel RSVP
         return event_repo.cancel_rsvp(event_id, email)
+    except ValueError:
+        # Re-raise validation errors
+        raise
     except Exception as e:
         raise Exception(f"Error cancelling RSVP: {e}")
 
@@ -135,6 +170,71 @@ def set_moderators(event_id: str, emails: list[str]) -> dict:
 
 def delete_old_events() -> int:
     return event_repo.delete_events_before_today()
+
+def archive_event(event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
+    """Archive/soft delete an event"""
+    try:
+        return event_repo.archive_event(event_id, archived_by, reason)
+    except Exception as e:
+        print(f"Error in archive_event: {e}")
+        return False
+
+def unarchive_event(event_id: str) -> bool:
+    """Restore an archived event"""
+    try:
+        return event_repo.unarchive_event(event_id)
+    except Exception as e:
+        print(f"Error in unarchive_event: {e}")
+        return False
+
+def get_archived_events(user_email: Optional[str] = None) -> list[dict]:
+    """Get archived events, optionally filtered by creator"""
+    try:
+        return event_repo.get_archived_events(user_email)
+    except Exception as e:
+        print(f"Error in get_archived_events: {e}")
+        return []
+
+def get_archived_events_paginated(pagination: PaginationParams, user_email: Optional[str] = None) -> PaginatedResponse:
+    """Get paginated archived events, optionally filtered by creator"""
+    try:
+        events, total_count = event_repo.get_archived_events_paginated(pagination, user_email)
+        return PaginatedResponse.create(
+            items=events,
+            total_count=total_count,
+            page=pagination.page,
+            page_size=pagination.page_size
+        )
+    except Exception as e:
+        print(f"Error in get_archived_events_paginated: {e}")
+        return PaginatedResponse.create(items=[], total_count=0, page=1, page_size=pagination.page_size)
+
+def archive_past_events(archived_by: str = "system") -> int:
+    """Archive all past events that have ended"""
+    try:
+        return event_repo.archive_past_events(archived_by)
+    except Exception as e:
+        print(f"Error in archive_past_events: {e}")
+        return 0
+
+def is_event_past(event: dict) -> bool:
+    """Check if an event is in the past"""
+    try:
+        start_time = event.get("startTime")
+        if not start_time:
+            return False
+        
+        duration = event.get("duration", 0)
+        
+        # Parse start time and calculate end time
+        start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end_dt = start_dt + timedelta(minutes=duration)
+        
+        # Check if event has ended
+        return end_dt < datetime.utcnow().replace(tzinfo=end_dt.tzinfo)
+    except Exception as e:
+        print(f"Error checking if event is past: {e}")
+        return False
 
 def get_all_events_paginated(pagination: PaginationParams, filters: Optional[EventFilters] = None) -> EventPaginatedResponse:
     """Get paginated events with optional filters"""

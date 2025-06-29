@@ -21,7 +21,14 @@ from app.services.event_service import (
     get_external_events,
     get_external_events_paginated,
     set_organizers,
-    set_moderators
+    set_moderators,
+    archive_event,
+    unarchive_event,
+    is_event_past,
+    get_archived_events,
+    get_archived_events_paginated,
+    archive_past_events,
+    get_rsvp_list
 )
 
 from app.services.event_ingestion_service import (
@@ -80,6 +87,46 @@ async def fetch_all_events(
         events = get_all_events()
         return {"events": events}
 
+# Get archived events (creator only) with optional pagination
+@event_router.get("/me/archived")
+async def get_my_archived_events(
+    page: Optional[int] = Query(None, ge=1, description="Page number (enables pagination)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
+    current_user: dict = Depends(user_only)
+):
+    user_email = current_user["email"]
+    
+    if page is not None:
+        page_size = page_size or 10
+        pagination = PaginationParams(page=page, page_size=page_size)
+        return get_archived_events_paginated(pagination, user_email)
+    else:
+        archived_events = get_archived_events(user_email)
+        return {"archived_events": archived_events, "count": len(archived_events)}
+
+# Get all archived events (admin only) with optional pagination
+@event_router.get("/archived")
+async def get_all_archived_events(
+    page: Optional[int] = Query(None, ge=1, description="Page number (enables pagination)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
+    current_user: dict = Depends(admin_only)
+):
+    """Get all archived events across the system (admin only)"""
+    try:
+        if page is not None:
+            page_size = page_size or 10
+            pagination = PaginationParams(page=page, page_size=page_size)
+            return get_archived_events_paginated(pagination)  # No user filter = get all
+        else:
+            archived_events = get_archived_events()  # No user filter = get all
+            return {
+                "archived_events": archived_events, 
+                "count": len(archived_events),
+                "message": f"Retrieved {len(archived_events)} archived events"
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve archived events: {str(e)}")
+
 # Get event by ID
 @event_router.get("/{event_id}")
 async def fetch_event_by_id(event_id: str):
@@ -104,24 +151,42 @@ async def remove_event(event_id: str, current_user: dict = Depends(require_event
         return {"message": "Event deleted successfully"}
     raise HTTPException(status_code=500, detail="Failed to delete event")
 
-# RSVP to event
-@event_router.post("/{event_id}/rsvp")
-async def rsvp_event(event_id: str, current_user: dict = Depends(user_only)):
-    email = current_user["email"]
-    success = rsvp_to_event(event_id, email)
+# Archive event (creator only)
+@event_router.patch("/{event_id}/archive")
+async def archive_event_endpoint(
+    event_id: str, 
+    archive_data: dict = Body({"reason": "Event archived"}),
+    current_user: dict = Depends(require_event_creator)
+):
+    # Get the event to check if it exists and if it's in the past
+    event = get_event_by_id(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Check if event is in the past (optional validation)
+    if not is_event_past(event):
+        # You can choose to allow or disallow archiving future events
+        # For now, we'll allow it but add a warning in the response
+        pass
+    
+    reason = archive_data.get("reason", "Event archived")
+    archived_by = current_user["email"]
+    
+    success = archive_event(event_id, archived_by, reason)
     if success:
-        return {"message": "RSVP successful"}
-    raise HTTPException(status_code=500, detail="Failed to RSVP")
+        message = "Event archived successfully"
+        if not is_event_past(event):
+            message += " (Note: This event has not ended yet)"
+        return {"message": message, "archived_by": archived_by, "reason": reason}
+    raise HTTPException(status_code=500, detail="Failed to archive event")
 
-# Cancel RSVP
-@event_router.delete("/{event_id}/rsvp")
-async def cancel_event_rsvp(event_id: str, current_user: dict = Depends(user_only)):
-    try:
-        email = current_user["email"]
-        result = cancel_user_rsvp(event_id, email)
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Unarchive event (creator only)
+@event_router.patch("/{event_id}/unarchive")
+async def unarchive_event_endpoint(event_id: str, current_user: dict = Depends(require_event_creator)):
+    success = unarchive_event(event_id)
+    if success:
+        return {"message": "Event restored successfully"}
+    raise HTTPException(status_code=500, detail="Failed to restore event")
 
 # Events created by user (with optional pagination)
 @event_router.get("/me/created")
@@ -310,3 +375,133 @@ async def update_event_moderators(
 async def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)):
     result = await ingest_events_for_all_cities()
     return result
+
+# Bulk archive past events (admin only)
+@event_router.post("/archive/past-events")
+async def bulk_archive_past_events(current_user: dict = Depends(admin_only)):
+    """Archive all events that have ended (admin only)"""
+    try:
+        archived_count = archive_past_events(current_user.get("email", "admin"))
+        return {
+            "message": f"Successfully archived {archived_count} past events",
+            "archived_count": archived_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to archive past events: {str(e)}")
+
+# ========== RSVP ENDPOINTS ==========
+
+@event_router.post("/{event_id}/rsvp")
+async def rsvp_to_event_endpoint(
+    event_id: str,
+    current_user: dict = Depends(user_only)
+):
+    """RSVP to an event"""
+    try:
+        email = current_user["email"]
+        success = rsvp_to_event(event_id, email)
+        
+        if success:
+            # Get updated event info for response
+            event = get_event_by_id(event_id)
+            rsvp_list = event.get("rsvpList", []) if event else []
+            
+            return {
+                "message": "Successfully RSVP'd to event",
+                "rsvp_status": "going",
+                "event": {
+                    "id": event_id,
+                    "title": event.get("eventName", "") if event else "",
+                    "current_attendees": len(rsvp_list)
+                }
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to RSVP to event")
+            
+    except ValueError as e:
+        # Handle business logic validation errors
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        elif "already RSVP'd" in error_msg:
+            raise HTTPException(status_code=409, detail=error_msg)
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to RSVP to event: {str(e)}")
+
+@event_router.delete("/{event_id}/rsvp")
+async def cancel_rsvp_endpoint(
+    event_id: str,
+    current_user: dict = Depends(user_only)
+):
+    """Cancel RSVP to an event"""
+    try:
+        email = current_user["email"]
+        success = cancel_user_rsvp(event_id, email)
+        
+        if success:
+            # Get updated event info for response
+            event = get_event_by_id(event_id)
+            rsvp_list = event.get("rsvpList", []) if event else []
+            
+            return {
+                "message": "RSVP cancelled successfully",
+                "rsvp_status": None,
+                "event": {
+                    "id": event_id,
+                    "title": event.get("eventName", "") if event else "",
+                    "current_attendees": len(rsvp_list)
+                }
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to cancel RSVP")
+            
+    except ValueError as e:
+        # Handle business logic validation errors
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPException(status_code=404, detail=error_msg)
+        else:
+            raise HTTPException(status_code=400, detail=error_msg)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel RSVP: {str(e)}")
+
+@event_router.get("/{event_id}/rsvps")
+async def get_event_rsvps(
+    event_id: str,
+    page: Optional[int] = Query(None, ge=1, description="Page number (enables pagination)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page")
+):
+    """Get RSVP list for an event"""
+    try:
+        rsvp_list = get_rsvp_list(event_id)
+        
+        if page is not None:
+            # Paginated response
+            page_size = page_size or 10
+            total_count = len(rsvp_list)
+            start_idx = (page - 1) * page_size
+            end_idx = start_idx + page_size
+            paginated_rsvps = rsvp_list[start_idx:end_idx]
+            
+            return {
+                "items": [{"user_email": email} for email in paginated_rsvps],
+                "pagination": {
+                    "page": page,
+                    "page_size": page_size,
+                    "total": total_count,
+                    "total_pages": (total_count + page_size - 1) // page_size,
+                    "has_next": end_idx < total_count,
+                    "has_prev": page > 1
+                }
+            }
+        else:
+            # Non-paginated response
+            return {
+                "rsvp_list": rsvp_list,
+                "total_count": len(rsvp_list)
+            }
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get RSVP list: {str(e)}")

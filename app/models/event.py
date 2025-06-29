@@ -15,3 +15,8 @@ class event(BaseModel):
     createdByEmail: str
     createdAt: Optional[str] = None
     description: Optional[str] = None
+    # Archive/soft delete fields
+    isArchived: Optional[bool] = False
+    archivedAt: Optional[str] = None
+    archivedBy: Optional[str] = None
+    archiveReason: Optional[str] = None

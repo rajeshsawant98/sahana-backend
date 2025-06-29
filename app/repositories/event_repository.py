@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timedelta
 from google.cloud.firestore_v1 import ArrayRemove
 from app.auth.firebase_init import get_firestore_client
 from app.models.pagination import PaginationParams, EventFilters
@@ -30,7 +30,12 @@ class EventRepository:
             "description": data.get("description", "No description available"),
             "rsvpList": [],
             "origin": "community",
-            "source": "user"
+            "source": "user",
+            # Archive fields
+            "isArchived": False,
+            "archivedAt": None,
+            "archivedBy": None,
+            "archiveReason": None
         }
         doc.set(event_payload)
         return {"eventId": event_id}
@@ -40,7 +45,9 @@ class EventRepository:
         return doc.to_dict() if doc.exists else None
 
     def get_all_events(self) -> list[dict]:
-        return [doc.to_dict() for doc in self.collection.stream()]
+        # Filter out archived events from regular queries
+        query = self.collection.where("isArchived", "!=", True).stream()
+        return [doc.to_dict() for doc in query]
 
     def update_event(self, event_id: str, update_data: dict) -> bool:
         doc_ref = self.collection.document(event_id)
@@ -56,8 +63,123 @@ class EventRepository:
         doc_ref.delete()
         return True
 
+    def archive_event(self, event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
+        """Soft delete/archive an event"""
+        try:
+            doc_ref = self.collection.document(event_id)
+            if not doc_ref.get().exists:
+                return False
+            
+            archive_data = {
+                "isArchived": True,
+                "archivedAt": datetime.utcnow().isoformat(),
+                "archivedBy": archived_by,
+                "archiveReason": reason
+            }
+            doc_ref.update(archive_data)
+            return True
+        except Exception as e:
+            print(f"Error archiving event {event_id}: {e}")
+            return False
+
+    def unarchive_event(self, event_id: str) -> bool:
+        """Restore an archived event"""
+        try:
+            doc_ref = self.collection.document(event_id)
+            if not doc_ref.get().exists:
+                return False
+            
+            unarchive_data = {
+                "isArchived": False,
+                "archivedAt": None,
+                "archivedBy": None,
+                "archiveReason": None
+            }
+            doc_ref.update(unarchive_data)
+            return True
+        except Exception as e:
+            print(f"Error unarchiving event {event_id}: {e}")
+            return False
+
+    def get_archived_events(self, user_email: Optional[str] = None) -> list[dict]:
+        """Get archived events, optionally filtered by creator"""
+        try:
+            query = self.collection.where("isArchived", "==", True)
+            
+            if user_email:
+                query = query.where("createdByEmail", "==", user_email)
+            
+            return [doc.to_dict() for doc in query.stream()]
+        except Exception as e:
+            print(f"Error getting archived events: {e}")
+            return []
+
+    def get_archived_events_paginated(self, pagination: PaginationParams, user_email: Optional[str] = None) -> Tuple[List[dict], int]:
+        """Get paginated archived events, optionally filtered by creator"""
+        try:
+            query = self.collection.where("isArchived", "==", True)
+            
+            if user_email:
+                query = query.where("createdByEmail", "==", user_email)
+            
+            # Order by archived date (most recently archived first)
+            # Now that composite index is created, this should work
+            query = query.order_by("archivedAt", direction="DESCENDING")
+            
+            # Get total count
+            total_count = len(list(query.stream()))
+            
+            # Apply pagination
+            query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+            events = [doc.to_dict() for doc in query_paginated.stream()]
+            
+            return events, total_count
+        except Exception as e:
+            print(f"Error getting paginated archived events: {e}")
+            return [], 0
+
+    def archive_past_events(self, archived_by: str = "system") -> int:
+        """Archive all past events (events that have ended)"""
+        try:
+            current_time = datetime.utcnow().isoformat()
+            archived_count = 0
+            
+            # Get all non-archived events
+            query = self.collection.where("isArchived", "!=", True).stream()
+            
+            for doc in query:
+                event_data = doc.to_dict()
+                start_time = event_data.get("startTime")
+                duration = event_data.get("duration", 0)
+                
+                if start_time:
+                    try:
+                        # Parse start time and calculate end time
+                        start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+                        end_dt = start_dt + timedelta(minutes=duration)
+                        
+                        # If event has ended, archive it
+                        if end_dt < datetime.utcnow().replace(tzinfo=end_dt.tzinfo):
+                            archive_data = {
+                                "isArchived": True,
+                                "archivedAt": current_time,
+                                "archivedBy": archived_by,
+                                "archiveReason": "Automatically archived - event ended"
+                            }
+                            self.collection.document(doc.id).update(archive_data)
+                            archived_count += 1
+                    except Exception as parse_error:
+                        print(f"Error parsing date for event {doc.id}: {parse_error}")
+                        continue
+            
+            return archived_count
+        except Exception as e:
+            print(f"Error archiving past events: {e}")
+            return 0
+
     def get_events_by_creator(self, email: str) -> list[dict]:
-        query = self.collection.where("createdByEmail", "==", email).stream()
+        # Filter out archived events from regular queries
+        query = self.collection.where("createdByEmail", "==", email).where("isArchived", "!=", True).stream()
         return [doc.to_dict() for doc in query]
 
     def rsvp_to_event(self, event_id: str, user_email: str) -> bool:
@@ -84,15 +206,15 @@ class EventRepository:
         return True
 
     def get_user_rsvps(self, user_email: str) -> list[dict]:
-        query = self.collection.where("rsvpList", "array_contains", user_email).stream()
+        query = self.collection.where("rsvpList", "array_contains", user_email).where("isArchived", "!=", True).stream()
         return [doc.to_dict() for doc in query]
     
     def get_events_organized_by_user(self, user_email: str) -> list[dict]:
-        query = self.collection.where("organizers", "array_contains", user_email).stream()
+        query = self.collection.where("organizers", "array_contains", user_email).where("isArchived", "!=", True).stream()
         return [doc.to_dict() for doc in query]
     
     def get_events_moderated_by_user(self, user_email: str) -> list[dict]:
-        query = self.collection.where("moderators", "array_contains", user_email).stream()
+        query = self.collection.where("moderators", "array_contains", user_email).where("isArchived", "!=", True).stream()
         return [doc.to_dict() for doc in query]
 
     def get_rsvp_list(self, event_id: str) -> list[str]:
@@ -109,6 +231,7 @@ class EventRepository:
             self.collection
             .where("location.city", "==", city)
             .where("location.state", "==", state)
+            .where("isArchived", "!=", True)
             .order_by("startTime")
             .limit(30)
         )
@@ -122,6 +245,7 @@ class EventRepository:
             .where("origin", "==", "external")
             .where("location.city", "==", city)
             .where("location.state", "==", state)
+            .where("isArchived", "!=", True)
             .order_by("startTime")
             .limit(30)
         )
@@ -168,7 +292,7 @@ class EventRepository:
     
     def get_all_events_paginated(self, pagination: PaginationParams, filters: Optional[EventFilters] = None) -> Tuple[List[dict], int]:
         """Get paginated events with optional filters"""
-        query = self.collection
+        query = self.collection.where("isArchived", "!=", True)
         
         # Apply filters if provided
         if filters:
@@ -201,7 +325,7 @@ class EventRepository:
 
     def get_events_by_creator_paginated(self, email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events created by a specific user"""
-        query = self.collection.where("createdByEmail", "==", email).order_by("createdAt", direction="DESCENDING")
+        query = self.collection.where("createdByEmail", "==", email).where("isArchived", "!=", True).order_by("createdAt", direction="DESCENDING")
         
         # Get total count
         total_count = len(list(query.stream()))
@@ -214,7 +338,7 @@ class EventRepository:
 
     def get_user_rsvps_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events that user has RSVP'd to"""
-        query = self.collection.where("rsvpList", "array_contains", user_email).order_by("startTime")
+        query = self.collection.where("rsvpList", "array_contains", user_email).where("isArchived", "!=", True).order_by("startTime")
         
         # Get total count
         total_count = len(list(query.stream()))
@@ -227,7 +351,7 @@ class EventRepository:
 
     def get_events_organized_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events organized by a specific user"""
-        query = self.collection.where("organizers", "array_contains", user_email).order_by("createdAt", direction="DESCENDING")
+        query = self.collection.where("organizers", "array_contains", user_email).where("isArchived", "!=", True).order_by("createdAt", direction="DESCENDING")
         
         # Get total count
         total_count = len(list(query.stream()))
@@ -240,7 +364,7 @@ class EventRepository:
 
     def get_events_moderated_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events moderated by a specific user"""
-        query = self.collection.where("moderators", "array_contains", user_email).order_by("createdAt", direction="DESCENDING")
+        query = self.collection.where("moderators", "array_contains", user_email).where("isArchived", "!=", True).order_by("createdAt", direction="DESCENDING")
         
         # Get total count
         total_count = len(list(query.stream()))
@@ -257,6 +381,7 @@ class EventRepository:
             self.collection
             .where("location.city", "==", city)
             .where("location.state", "==", state)
+            .where("isArchived", "!=", True)
             .order_by("startTime")
         )
         
@@ -277,6 +402,7 @@ class EventRepository:
             .where("origin", "==", "external")
             .where("location.city", "==", city)
             .where("location.state", "==", state)
+            .where("isArchived", "!=", True)
             .order_by("startTime")
         )
         
