@@ -1,7 +1,7 @@
 from app.repositories.friend_repository import FriendRepository
 from app.repositories.user_repository import UserRepository
 from app.models.friend import FriendProfile
-from app.utils.logger import get_service_logger
+from app.utils.logger import get_service_logger, log_error_with_context, log_service_call
 from typing import List, Dict, Any, Optional
 
 class FriendManagementService:
@@ -20,26 +20,36 @@ class FriendManagementService:
             if not user:
                 return []
             
-            friends_data = self.friend_repo.get_friends_for_user(user_email)
+            # Get friend IDs from accepted friend requests
+            friend_ids = self.friend_repo.get_accepted_friendship_ids(user_email)
             
             friends = []
-            for friend_data in friends_data:
-                friend_profile = FriendProfile(
-                    id=friend_data["id"],
-                    name=friend_data.get("name", ""),
-                    email=friend_data.get("email", ""),
-                    bio=friend_data.get("bio"),
-                    profile_picture=friend_data.get("profile_picture"),
-                    location=friend_data.get("location"),
-                    interests=friend_data.get("interests", []),
-                    created_at=friend_data.get("created_at")
-                )
-                friends.append(friend_profile)
+            for friend_id in friend_ids:
+                # Get user details for each friend
+                friend_user = self.user_repo.get_by_email(friend_id)
+                if friend_user:
+                    friend_profile = FriendProfile(
+                        id=friend_user.get("email", friend_id),  # Use email as ID
+                        name=friend_user.get("name", ""),
+                        email=friend_user.get("email", friend_id),
+                        bio=friend_user.get("bio"),
+                        profile_picture=friend_user.get("profile_picture"),
+                        location=friend_user.get("location"),
+                        interests=friend_user.get("interests", []),
+                        created_at=friend_user.get("created_at")
+                    )
+                    friends.append(friend_profile)
             
             return friends
             
         except Exception as e:
-            self.logger.error(f"Error getting friends list: {str(e)}")
+            context = {
+                'method': 'get_friends_list',
+                'user_email': user_email,
+                'error_type': type(e).__name__,
+                'available_methods': [method for method in dir(self.friend_repo) if not method.startswith('_')]
+            }
+            self.logger.error(f"Error getting friends list: {str(e)}", extra=context, exc_info=True)
             return []
 
     def get_friendship_status(self, current_user_email: str, user_id: str) -> Dict[str, Any]:
@@ -55,8 +65,21 @@ class FriendManagementService:
             if not target_user:
                 return {"success": False, "error": "Target user not found"}
             
-            # Get friendship status using repository
-            status = self.friend_repo.get_friendship_status(current_user_email, user_id)
+            # Get friendship status using existing repository methods
+            # Check if there's an accepted request between users
+            request = self.friend_repo.find_request_between_users(current_user_email, user_id, ["accepted"])
+            if request:
+                status = "friends"
+            else:
+                # Check for pending requests
+                pending_request = self.friend_repo.find_request_between_users(current_user_email, user_id, ["pending"])
+                if pending_request:
+                    if pending_request["sender_id"] == current_user_email:
+                        status = "request_sent"
+                    else:
+                        status = "request_received"
+                else:
+                    status = "none"
             
             return {
                 "success": True,
@@ -77,9 +100,9 @@ class FriendManagementService:
             if not user or not friend:
                 return {"success": False, "error": "One or both users not found"}
             
-            # Get the friendship request
-            request = self.friend_repo.get_friend_request_by_users(user_email, friend_email)
-            if not request or request["status"] != "accepted":
+            # Get the friendship request using existing method
+            request = self.friend_repo.find_request_between_users(user_email, friend_email, ["accepted"])
+            if not request:
                 return {"success": False, "error": "No active friendship found"}
             
             # Delete the friendship

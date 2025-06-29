@@ -1,13 +1,15 @@
-from datetime import datetime, timedelta, timedelta
-from google.cloud.firestore_v1 import ArrayRemove
+from datetime import datetime, timedelta
+from google.cloud.firestore_v1 import ArrayRemove, FieldFilter
 from app.auth.firebase_init import get_firestore_client
 from app.models.pagination import PaginationParams, EventFilters
+from app.utils.logger import get_repository_logger
 from typing import Tuple, List, Optional
 
 class EventRepository:
     def __init__(self):
         self.db = get_firestore_client()
         self.collection = self.db.collection("events")
+        self.logger = get_repository_logger(__name__)
 
     def create_event(self, data: dict) -> dict:
         doc = self.collection.document()
@@ -325,29 +327,51 @@ class EventRepository:
 
     def get_events_by_creator_paginated(self, email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events created by a specific user"""
-        query = self.collection.where("createdByEmail", "==", email).where("isArchived", "!=", True).order_by("createdAt", direction="DESCENDING")
-        
-        # Get total count
-        total_count = len(list(query.stream()))
-        
-        # Apply pagination
-        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
-        events = [doc.to_dict() for doc in query_paginated.stream()]
-        
-        return events, total_count
+        try:
+            # Use the new filter syntax to avoid warnings
+            query = self.collection.where(
+                filter=FieldFilter("createdByEmail", "==", email)
+            ).where(
+                filter=FieldFilter("isArchived", "!=", True)
+            ).order_by("createdAt", direction="DESCENDING")
+            
+            # Get total count
+            total_count = len(list(query.stream()))
+            
+            # Apply pagination
+            query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+            events = [doc.to_dict() for doc in query_paginated.stream()]
+            
+            self.logger.debug(f"Retrieved {len(events)} events for creator {email} (page {pagination.page}, total: {total_count})")
+            return events, total_count
+            
+        except Exception as e:
+            self.logger.error(f"Error getting events by creator {email}: {str(e)}", exc_info=True)
+            return [], 0
 
     def get_user_rsvps_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events that user has RSVP'd to"""
-        query = self.collection.where("rsvpList", "array_contains", user_email).where("isArchived", "!=", True).order_by("startTime")
-        
-        # Get total count
-        total_count = len(list(query.stream()))
-        
-        # Apply pagination
-        query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
-        events = [doc.to_dict() for doc in query_paginated.stream()]
-        
-        return events, total_count
+        try:
+            # Use the new filter syntax to avoid warnings
+            query = self.collection.where(
+                filter=FieldFilter("rsvpList", "array_contains", user_email)
+            ).where(
+                filter=FieldFilter("isArchived", "!=", True)
+            ).order_by("startTime")
+            
+            # Get total count
+            total_count = len(list(query.stream()))
+            
+            # Apply pagination
+            query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
+            events = [doc.to_dict() for doc in query_paginated.stream()]
+            
+            self.logger.debug(f"Retrieved {len(events)} RSVP events for user {user_email} (page {pagination.page}, total: {total_count})")
+            return events, total_count
+            
+        except Exception as e:
+            self.logger.error(f"Error getting user RSVPs for {user_email}: {str(e)}", exc_info=True)
+            return [], 0
 
     def get_events_organized_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[dict], int]:
         """Get paginated events organized by a specific user"""

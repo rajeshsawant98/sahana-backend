@@ -20,12 +20,25 @@ class UserDiscoveryService:
             if not current_user:
                 return []
             
-            users_data = self.friend_repo.search_users(search_term, user_email, limit)
+            # Use user repository to search for users
+            users_data = self.user_repo.search_users(search_term, user_email, limit)
             
             search_results = []
             for user_data in users_data:
-                # Get friendship status
-                friendship_status = self.friend_repo.get_friendship_status(user_email, user_data["id"])
+                # Get friendship status using existing repository methods
+                request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
+                if request:
+                    friendship_status = "friends"
+                else:
+                    # Check for pending requests
+                    pending_request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
+                    if pending_request:
+                        if pending_request["sender_id"] == user_email:
+                            friendship_status = "request_sent"
+                        else:
+                            friendship_status = "request_received"
+                    else:
+                        friendship_status = "none"
                 
                 # Ensure friendship_status is one of the valid literal values
                 valid_status: Literal["friends", "pending_sent", "pending_received", "none"] = "none"
@@ -33,7 +46,7 @@ class UserDiscoveryService:
                     valid_status = friendship_status  # type: ignore
                 
                 user_result = UserSearchResult(
-                    id=user_data["id"],
+                    id=user_data.get("id", user_data.get("email", "")),  # Use ID or email as fallback
                     name=user_data.get("name", ""),
                     email=user_data.get("email", ""),
                     bio=user_data.get("bio"),
@@ -71,9 +84,13 @@ class UserDiscoveryService:
                     continue
                     
                 # Check if already friends or has pending request
-                friendship_status = self.friend_repo.get_friendship_status(user_email, user_data["id"])
-                if friendship_status != "none":
-                    continue
+                request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
+                if request:
+                    continue  # Already friends
+                
+                pending_request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
+                if pending_request:
+                    continue  # Has pending request
                 
                 # Calculate interest similarity (simple approach)
                 other_interests = user_data.get("interests", [])
@@ -81,7 +98,7 @@ class UserDiscoveryService:
                 
                 if len(common_interests) > 0:  # Has common interests
                     user_result = UserSearchResult(
-                        id=user_data["id"],
+                        id=user_data.get("id", user_data.get("email", "")),  # Use ID or email as fallback
                         name=user_data.get("name", ""),
                         email=user_data.get("email", ""),
                         bio=user_data.get("bio"),

@@ -14,8 +14,13 @@ class UserRepository:
     
     def get_all_users(self):
         try:
-            users = self.collection.stream()
-            return [user.to_dict() for user in users]
+            users = []
+            for doc in self.collection.stream():
+                user_data = doc.to_dict()
+                if user_data:
+                    user_data["id"] = doc.id  # Add document ID
+                    users.append(user_data)
+            return users
         except Exception as e:
             self.logger.error(f"Error retrieving users: {str(e)}")
             return []
@@ -143,3 +148,77 @@ class UserRepository:
             self.logger.info(f"User profile updated for: {user_email}")
         except Exception as e:
             self.logger.error(f"Error updating user data: {str(e)}")
+
+    def search_users(self, search_term: str, exclude_email: str, limit: int = 20) -> List[dict]:
+        """Search for users by name or email, excluding the current user"""
+        try:
+            if not search_term or len(search_term.strip()) < 2:
+                return []
+            
+            search_term = search_term.strip().lower()
+            
+            # Get all users and filter in memory (for simplicity)
+            # In production, you might want to use Firestore's full-text search or Algolia
+            all_users = []
+            docs = self.collection.stream()
+            
+            for doc in docs:
+                user_data = doc.to_dict()
+                if user_data and user_data.get("email") != exclude_email:
+                    # Add the document ID to user data (consistent with other methods)
+                    user_data["id"] = doc.id
+                    
+                    user_email = user_data.get("email", "").lower()
+                    user_name = user_data.get("name", "").lower()
+                    
+                    # Enhanced search: support multiple types of matching
+                    match_found = False
+                    match_score = 0  # Higher score = better match
+                    
+                    # 1. Exact name match (highest priority)
+                    if search_term == user_name:
+                        match_found = True
+                        match_score = 100
+                    
+                    # 2. Name starts with search term (high priority)
+                    elif user_name.startswith(search_term):
+                        match_found = True
+                        match_score = 90
+                        
+                    # 3. Word-based matching (any word in name starts with search term)
+                    elif any(word.startswith(search_term) for word in user_name.split()):
+                        match_found = True
+                        match_score = 80
+                        
+                    # 4. Partial name match (contains search term)
+                    elif search_term in user_name:
+                        match_found = True
+                        match_score = 70
+                        
+                    # 5. Email matching (lower priority)
+                    elif search_term in user_email:
+                        match_found = True
+                        match_score = 50
+                    
+                    if match_found:
+                        user_data["_search_score"] = match_score
+                        all_users.append(user_data)
+                        
+                        # Limit results during collection (but we'll sort first)
+                        if len(all_users) >= limit * 3:  # Get more for better sorting
+                            break
+            
+            # Sort by relevance score (highest first)
+            all_users.sort(key=lambda x: x.get("_search_score", 0), reverse=True)
+            
+            # Remove search score and apply final limit
+            result_users = []
+            for user_data in all_users[:limit]:
+                if "_search_score" in user_data:
+                    del user_data["_search_score"]
+                result_users.append(user_data)
+            
+            return result_users
+        except Exception as e:
+            self.logger.error(f"Error searching users: {str(e)}")
+            return []

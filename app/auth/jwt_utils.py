@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
+from app.utils.logger import get_logger, log_jwt_payload
+
+# Get logger for this module
+logger = get_logger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -42,25 +46,30 @@ def create_refresh_token(data: dict, expires_in_days: int = 7) -> str:
 def verify_access_token(token: str):
     try:
         decoded_token = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(decoded_token)
+        log_jwt_payload(logger, decoded_token, "ACCESS_TOKEN_VERIFIED")
         if datetime.utcfromtimestamp(decoded_token["exp"]) < datetime.utcnow():
             return None
         return decoded_token
     except jwt.ExpiredSignatureError:
+        logger.warning("Access token has expired")
         return None
     except jwt.InvalidTokenError:
+        logger.warning("Invalid access token provided")
         return None
 
 # Function to validate Refresh Token
 def verify_refresh_token(token: str):
     try:
         decoded_token = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=[ALGORITHM])
+        log_jwt_payload(logger, decoded_token, "REFRESH_TOKEN_VERIFIED")
         if datetime.utcfromtimestamp(decoded_token["exp"]) < datetime.utcnow():
             return None
         return decoded_token
     except jwt.ExpiredSignatureError:
+        logger.warning("Refresh token has expired")
         return None
     except jwt.InvalidTokenError:
+        logger.warning("Invalid refresh token provided")
         return None
 
 # Token Required Dependency
