@@ -1,4 +1,4 @@
-from app.repositories.friend_repository_clean import FriendRepository
+from app.repositories.friend_repository import FriendRepository
 from app.repositories.user_repository import UserRepository
 from app.models.friend import FriendRequestWithProfile, FriendProfile
 from app.utils.logger import get_service_logger

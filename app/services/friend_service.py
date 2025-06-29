@@ -2,7 +2,6 @@ from app.services.friend_request_service import FriendRequestService
 from app.services.friend_management_service import FriendManagementService
 from app.services.user_discovery_service import UserDiscoveryService
 from app.repositories.friend_repository import FriendRepository
-from app.repositories.friend_repository_clean import FriendRepository as CleanFriendRepository
 from app.repositories.user_repository import UserRepository
 from app.models.friend import FriendRequestWithProfile, FriendProfile, UserSearchResult
 from app.utils.logger import get_service_logger
@@ -18,10 +17,10 @@ class FriendService:
     def __init__(self, friend_repo: Optional[FriendRepository] = None, user_repo: Optional[UserRepository] = None):
         """Initialize service with repository dependencies (supports dependency injection)"""
         # Initialize specialized services with appropriate repositories
-        clean_friend_repo = CleanFriendRepository() if not friend_repo else None
-        self.friend_request_service = FriendRequestService(clean_friend_repo, user_repo)
-        self.friend_management_service = FriendManagementService(friend_repo, user_repo)
-        self.user_discovery_service = UserDiscoveryService(friend_repo, user_repo)
+        friend_repo_instance = friend_repo or FriendRepository()
+        self.friend_request_service = FriendRequestService(friend_repo_instance, user_repo)
+        self.friend_management_service = FriendManagementService(friend_repo_instance, user_repo)
+        self.user_discovery_service = UserDiscoveryService(friend_repo_instance, user_repo)
         self.logger = get_service_logger(__name__)
 
     # Friend Request Operations (delegate to FriendRequestService)

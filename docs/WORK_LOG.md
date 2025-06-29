@@ -107,7 +107,7 @@ Event management system backend with comprehensive features including user authe
 
 ### Session 1: Friend System Implementation (June 28, 2025)
 
-#### Completed Tasks
+#### Completed Tasks (Session 3)
 
 ##### Friend Relationship Model
 
@@ -164,7 +164,7 @@ Event management system backend with comprehensive features including user authe
 
 ### Session 2: Archive System Implementation (June 28, 2025)
 
-#### **Completed Tasks:**
+#### **Completed Tasks (Friend System Refactor - Session 4):**
 
 ##### **1. Event Archive Model Design**
 
@@ -267,7 +267,7 @@ Event management system backend with comprehensive features including user authe
 
 ### Session 4: Friend System Architecture Refactor (June 28, 2025)
 
-#### **Completed Tasks:**
+#### **Completed Tasks (Session 4):**
 
 ##### **1. Repository Pattern Analysis and Cleanup**
 
@@ -335,6 +335,70 @@ Event management system backend with comprehensive features including user authe
 - **Dependency Injection:** Proper DI implementation for testing and flexibility
 - **Error Handling:** Consistent error response patterns across all methods
 - **Type Safety:** Strong typing with proper return type annotations
+
+---
+
+### Session 5: Duplicate File Cleanup (June 29, 2025)
+
+#### **Completed Tasks:**
+
+##### **1. Identified and Resolved Duplicate Files**
+
+**Issue Identified:** During codebase analysis, discovered duplicate friend repository and service files:
+
+- `app/repositories/friend_repository.py` (original, 229 lines)
+- `app/repositories/friend_repository_clean.py` (clean version, 210 lines)
+- `app/services/friend_request_service.py` (149 lines)
+- `app/services/friend_request_service_new.py` (123 lines - unused)
+
+##### **2. Repository Consolidation**
+
+**Actions Taken:**
+
+- **Removed:** `app/repositories/friend_repository.py` (original with business logic violations)
+- **Renamed:** `app/repositories/friend_repository_clean.py` → `app/repositories/friend_repository.py`
+- **Rationale:** The clean version follows proper repository pattern with pure data access only
+
+##### **3. Service Consolidation**
+
+**Actions Taken:**
+
+- **Removed:** `app/services/friend_request_service_new.py` (unused duplicate)
+- **Kept:** `app/services/friend_request_service.py` (active implementation)
+
+##### **4. Import Updates**
+
+**Files Modified:**
+
+- `app/services/friend_request_service.py` - Updated import to use consolidated repository
+- `app/services/friend_service.py` - Removed duplicate import and fixed dependency injection
+
+**Before:**
+
+```python
+from app.repositories.friend_repository import FriendRepository
+from app.repositories.friend_repository_clean import FriendRepository as CleanFriendRepository
+```
+
+**After:**
+
+```python
+from app.repositories.friend_repository import FriendRepository
+```
+
+##### **5. Architecture Benefits**
+
+- **Reduced Duplication:** Eliminated 352 lines of duplicate code
+- **Cleaner Imports:** Simplified dependency management
+- **Consistency:** Single source of truth for friend repository
+- **Maintainability:** Easier to update and extend friend functionality
+
+#### **Technical Impact:**
+
+- **Files Removed:** 2 duplicate files (repository + service)
+- **Code Reduction:** 352 lines of duplicate code eliminated
+- **Import Complexity:** Reduced from dual imports to single import
+- **Architecture Compliance:** Repository pattern now consistently followed
 
 ---
 
@@ -560,8 +624,7 @@ Event management system backend with comprehensive features including user authe
 
 - `app/repositories/user_repository.py`
 - `app/repositories/event_repository.py`
-- `app/repositories/friend_repository.py` (original)
-- `app/repositories/friend_repository_clean.py` (clean architecture)
+- `app/repositories/friend_repository.py` (clean architecture)
 - `app/repositories/event_ingestion_repository.py`
 
 ### Services
@@ -590,16 +653,16 @@ Event management system backend with comprehensive features including user authe
 - `app/auth/roles.py`
 - `app/auth/event_roles.py`
 
-### Utilities
+### Utilitiesj
 
-- `app/utils/pagination_utils.py`
-- `app/utils/cache_utils.py`
-- `app/utils/event_parser.py`
-- `app/utils/logger.py`
-- `app/utils/error_codes.py`
-- `app/utils/service_decorators.py`
+- `app/utils/pagination_utils.py` - Helpers for paginating API responses
+- `app/utils/cache_utils.py` - URL and data caching utilities
+- `app/utils/event_parser.py` - Event data parsing and normalization
+- `app/utils/logger.py` - Logging configuration and helpers
+- `app/utils/error_codes.py` - Standardized error codes and responses
+- `app/utils/service_decorators.py` - Common decorators for service logic
 
-### External Integrations
+### External Integrations (API & Data)
 
 - `app/scrapers/eventbrite_scraper.py`
 - `app/scrapers/eventbrite_scraper_async.py`
@@ -656,6 +719,6 @@ The Sahana Backend is now a **production-ready, enterprise-grade** event managem
 
 ---
 
-*Last Updated: June 28, 2025*  
+*Last Updated: June 29, 2025*  
 *Project Status: Production Ready*  
 *Architecture: Clean, Scalable, Maintainable*
