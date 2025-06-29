@@ -23,7 +23,7 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
         "city": city,
         "stateCode": state,
         "countryCode": "US",
-        "size": 20,
+        "size": 30,
         "sort": "date,asc"
     }
 

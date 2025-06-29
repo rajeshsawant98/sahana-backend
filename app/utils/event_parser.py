@@ -36,12 +36,26 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
 
     is_online = "online" in location["name"].lower()
 
+    # Calculate duration from start and end times
+    start_time = event.get("dates", {}).get("start", {}).get("dateTime")
+    end_time = event.get("dates", {}).get("end", {}).get("dateTime")
+    
+    duration = 120  # Default duration in minutes
+    if start_time and end_time:
+        try:
+            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+            end_dt = datetime.fromisoformat(end_time.replace('Z', '+00:00'))
+            duration_seconds = (end_dt - start_dt).total_seconds()
+            duration = int(duration_seconds // 60)  # Convert to minutes
+        except (ValueError, TypeError):
+            duration = 120  # Fallback to default if parsing fails
+
     return {
         "eventId": event.get("id") or str(uuid4()),
         "eventName": event.get("name", "Untitled Event").strip(),
         "location": location,
-        "startTime": event.get("dates", {}).get("start", {}).get("dateTime"),
-        "duration": 120,
+        "startTime": start_time,
+        "duration": duration,
         "categories": list(categories),
         "isOnline": is_online,
         "joinLink": event.get("url"),
@@ -54,6 +68,11 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
         "origin": "external",
         "source": "ticketmaster",
         "originalId": event.get("id"),
+        # Archive/status fields
+        "isArchived": False,
+        "archivedAt": None,
+        "archivedBy": None,
+        "archiveReason": None,
     }
 
 def safe_get_name(value):
@@ -153,5 +172,10 @@ def parse_eventbrite_data(server_data: dict) -> dict:
         "format": format_name or "Event",
         "category": category_name or "General",
         "subCategory": subcategory_name or "",
-        "tags": tags
+        "tags": tags,
+        # Archive/status fields
+        "isArchived": False,
+        "archivedAt": None,
+        "archivedBy": None,
+        "archiveReason": None,
     }
