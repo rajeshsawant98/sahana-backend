@@ -1,6 +1,6 @@
 from passlib.context import CryptContext
 from app.auth.firebase_init import get_firestore_client
-from app.models.pagination import PaginationParams, UserFilters
+from app.models.pagination import PaginationParams, UserFilters, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_service_logger
 from typing import Tuple, List, Optional
 
@@ -51,6 +51,107 @@ class UserRepository:
         except Exception as e:
             self.logger.error(f"Error retrieving paginated users: {str(e)}")
             return [], 0
+
+    def get_all_users_cursor_paginated(self, cursor_params: CursorPaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], Optional[str], Optional[str], bool, bool]:
+        """Get cursor-paginated users with optional filters"""
+        try:
+            # Parse cursor
+            cursor_info = None
+            if cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if not cursor_info:
+                    raise ValueError("Invalid cursor format")
+            
+            # Build query
+            query = self.collection.limit(1000000)
+            
+            # Apply filters if provided
+            if filters:
+                if filters.role:
+                    query = query.where("role", "==", filters.role)
+                if filters.profession:
+                    query = query.where("profession", "==", filters.profession)
+            
+            # Apply cursor-based filtering (using email as sort field)
+            if cursor_info:
+                if cursor_params.direction == "next":
+                    if cursor_info.start_time:  # Using start_time field for email
+                        query = query.where("email", ">", cursor_info.start_time)
+                else:  # direction == "prev"
+                    if cursor_info.start_time:
+                        query = query.where("email", "<", cursor_info.start_time)
+            
+            # Order by email for consistent pagination
+            query = query.order_by("email")
+            
+            # Fetch items with appropriate limits
+            fetch_limit = cursor_params.page_size + 1
+            if cursor_info:
+                fetch_limit = min(cursor_params.page_size * 3, 100)
+            
+            query = query.limit(fetch_limit)
+            
+            # Execute query
+            docs = list(query.get())
+            users = []
+            for doc in docs:
+                user_data = doc.to_dict()
+                if user_data:
+                    user_data["id"] = doc.id
+                    users.append(user_data)
+            
+            # Apply cursor filtering for exact positioning
+            if cursor_info:
+                filtered_users = []
+                for user in users:
+                    user_email = user.get("email", "")
+                    if cursor_params.direction == "next":
+                        if user_email > (cursor_info.start_time or ""):
+                            filtered_users.append(user)
+                    else:  # direction == "prev"
+                        if user_email < (cursor_info.start_time or ""):
+                            filtered_users.append(user)
+                users = filtered_users
+            
+            # Handle pagination logic
+            if cursor_params.direction == "prev":
+                has_more = len(users) > cursor_params.page_size
+                if has_more:
+                    users = users[-cursor_params.page_size:]
+                has_next = cursor_params.cursor is not None
+                has_previous = has_more
+            else:
+                has_more = len(users) > cursor_params.page_size
+                if has_more:
+                    users = users[:cursor_params.page_size]
+                has_next = has_more
+                has_previous = cursor_params.cursor is not None
+            
+            # Generate cursors
+            next_cursor = None
+            prev_cursor = None
+            
+            if users:
+                first_user = users[0]
+                last_user = users[-1]
+                
+                if has_next:
+                    next_cursor = CursorInfo(
+                        start_time=last_user["email"],
+                        event_id=last_user["id"]
+                    ).encode()
+                
+                if has_previous:
+                    prev_cursor = CursorInfo(
+                        start_time=first_user["email"], 
+                        event_id=first_user["id"]
+                    ).encode()
+            
+            return users, next_cursor, prev_cursor, has_next, has_previous
+            
+        except Exception as e:
+            self.logger.error(f"Error in users cursor pagination: {e}", exc_info=True)
+            return [], None, None, False, False
 
     def get_by_email(self, email: str):
         try:

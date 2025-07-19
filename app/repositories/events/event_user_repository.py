@@ -1,7 +1,7 @@
 from ..base_repository import BaseRepository
-from app.models.pagination import PaginationParams
+from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 
 class EventUserRepository(BaseRepository):
     """Repository for user-specific event queries"""
@@ -25,37 +25,80 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting events by creator {email}: {e}", exc_info=True)
             return []
 
-    def get_events_by_creator_paginated(self, email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events created by a specific user"""
+    def get_events_by_creator_paginated(
+        self, 
+        email: str, 
+        cursor_params: Optional[CursorPaginationParams] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        Get events created by a specific user using cursor-based pagination.
+        Orders by startTime ascending for consistent pagination.
+        
+        Args:
+            email: Creator's email address
+            cursor_params: Cursor pagination parameters
+        
+        Returns:
+            Tuple of (list of events, next cursor string)
+        """
         try:
-            # Build query - start with user filter first to avoid multiple != issues
-            query = self.collection.where("createdByEmail", "==", email)
+            self.logger.info(f"Getting cursor-paginated events by creator: {email}")
             
-            # Get total count - filter out archived events in code
-            all_docs = list(query.stream())
-            non_archived_events = []
-            for doc in all_docs:
+            # Build base query filtering by creator and excluding archived events
+            query = (self.collection
+                    .where("createdByEmail", "==", email)
+                    .where("isArchived", "!=", True))
+            
+            # Apply sorting and cursor positioning
+            query = query.order_by('startTime').order_by('eventId')
+            
+            # Handle cursor positioning
+            if cursor_params and cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if cursor_info:
+                    query = query.start_after([cursor_info.start_time, cursor_info.event_id])
+            
+            # Apply limit
+            page_size = cursor_params.page_size if cursor_params else 20
+            query = query.limit(page_size + 1)  # Fetch one extra to check for next page
+            
+            # Execute query
+            results = list(query.stream())
+            
+            # Process results
+            events = []
+            has_next_page = len(results) > page_size
+            
+            # If we have more results than limit, remove the extra one
+            if has_next_page:
+                results = results[:-1]
+            
+            # Convert documents to dictionaries
+            for doc in results:
                 event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    non_archived_events.append(event_data)
+                if event_data:  # Ensure event_data is not None
+                    event_data['eventId'] = doc.id
+                    events.append(event_data)
             
-            total_count = len(non_archived_events)
+            # Generate cursor for next page
+            next_cursor = None
+            if has_next_page and events:
+                last_event = events[-1]
+                cursor_info = CursorInfo(
+                    start_time=last_event.get('startTime'),
+                    event_id=last_event.get('eventId')
+                )
+                next_cursor = cursor_info.encode()
             
-            # Apply sorting
-            non_archived_events.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+            self.logger.info(f"Retrieved {len(events)} events by creator {email} (has_next: {has_next_page})")
+            return events, next_cursor
             
-            # Apply pagination manually
-            start = pagination.offset
-            end = start + pagination.page_size
-            paginated_events = non_archived_events[start:end]
-            
-            return paginated_events, total_count
         except Exception as e:
-            self.logger.error(f"Error getting paginated events by creator {email}: {e}", exc_info=True)
-            return [], 0
+            self.logger.error(f"Error getting cursor-paginated events by creator {email}: {e}")
+            raise
 
     def get_events_organized_by_user(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get all events organized by a specific user"""
+        """Get events organized by a specific user"""
         try:
             query = self.collection.where("organizers", "array_contains", user_email)
             docs = query.stream()
@@ -66,40 +109,60 @@ class EventUserRepository(BaseRepository):
                     events.append(event_data)
             return events
         except Exception as e:
-            self.logger.error(f"Error getting events organized by {user_email}: {e}", exc_info=True)
+            self.logger.error(f"Error getting events organized by user {user_email}: {e}", exc_info=True)
             return []
 
-    def get_events_organized_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events organized by a specific user"""
+    def get_events_organized_by_user_paginated(
+        self, 
+        user_email: str, 
+        cursor_params: Optional[CursorPaginationParams] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Get events organized by user using cursor-based pagination"""
         try:
-            # Build query
-            query = self.collection.where("organizers", "array_contains", user_email)
+            query = (self.collection
+                    .where("organizers", "array_contains", user_email)
+                    .where("isArchived", "!=", True))
             
-            # Get all docs and filter archived events
-            all_docs = list(query.stream())
-            non_archived_events = []
-            for doc in all_docs:
+            query = query.order_by('startTime').order_by('eventId')
+            
+            if cursor_params and cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if cursor_info:
+                    query = query.start_after([cursor_info.start_time, cursor_info.event_id])
+            
+            page_size = cursor_params.page_size if cursor_params else 20
+            query = query.limit(page_size + 1)
+            
+            results = list(query.stream())
+            events = []
+            has_next_page = len(results) > page_size
+            
+            if has_next_page:
+                results = results[:-1]
+            
+            for doc in results:
                 event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    non_archived_events.append(event_data)
+                if event_data:
+                    event_data['eventId'] = doc.id
+                    events.append(event_data)
             
-            total_count = len(non_archived_events)
+            next_cursor = None
+            if has_next_page and events:
+                last_event = events[-1]
+                cursor_info = CursorInfo(
+                    start_time=last_event.get('startTime'),
+                    event_id=last_event.get('eventId')
+                )
+                next_cursor = cursor_info.encode()
             
-            # Apply sorting
-            non_archived_events.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+            return events, next_cursor
             
-            # Apply pagination manually
-            start = pagination.offset
-            end = start + pagination.page_size
-            paginated_events = non_archived_events[start:end]
-                    
-            return paginated_events, total_count
         except Exception as e:
-            self.logger.error(f"Error getting paginated events organized by {user_email}: {e}", exc_info=True)
-            return [], 0
+            self.logger.error(f"Error getting cursor-paginated events organized by user {user_email}: {e}")
+            raise
 
     def get_events_moderated_by_user(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get all events moderated by a specific user"""
+        """Get events moderated by a specific user"""
         try:
             query = self.collection.where("moderators", "array_contains", user_email)
             docs = query.stream()
@@ -110,105 +173,82 @@ class EventUserRepository(BaseRepository):
                     events.append(event_data)
             return events
         except Exception as e:
-            self.logger.error(f"Error getting events moderated by {user_email}: {e}", exc_info=True)
+            self.logger.error(f"Error getting events moderated by user {user_email}: {e}", exc_info=True)
             return []
 
-    def get_events_moderated_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events moderated by a specific user"""
+    def get_events_moderated_by_user_paginated(
+        self, 
+        user_email: str, 
+        cursor_params: Optional[CursorPaginationParams] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Get events moderated by user using cursor-based pagination"""
         try:
-            # Build query
-            query = self.collection.where("moderators", "array_contains", user_email)
+            query = (self.collection
+                    .where("moderators", "array_contains", user_email)
+                    .where("isArchived", "!=", True))
             
-            # Get all docs and filter archived events
-            all_docs = list(query.stream())
-            non_archived_events = []
-            for doc in all_docs:
+            query = query.order_by('startTime').order_by('eventId')
+            
+            if cursor_params and cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if cursor_info:
+                    query = query.start_after([cursor_info.start_time, cursor_info.event_id])
+            
+            page_size = cursor_params.page_size if cursor_params else 20
+            query = query.limit(page_size + 1)
+            
+            results = list(query.stream())
+            events = []
+            has_next_page = len(results) > page_size
+            
+            if has_next_page:
+                results = results[:-1]
+            
+            for doc in results:
                 event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    non_archived_events.append(event_data)
+                if event_data:
+                    event_data['eventId'] = doc.id
+                    events.append(event_data)
             
-            total_count = len(non_archived_events)
+            next_cursor = None
+            if has_next_page and events:
+                last_event = events[-1]
+                cursor_info = CursorInfo(
+                    start_time=last_event.get('startTime'),
+                    event_id=last_event.get('eventId')
+                )
+                next_cursor = cursor_info.encode()
             
-            # Apply sorting
-            non_archived_events.sort(key=lambda x: x.get("createdAt", ""), reverse=True)
+            return events, next_cursor
             
-            # Apply pagination manually
-            start = pagination.offset
-            end = start + pagination.page_size
-            paginated_events = non_archived_events[start:end]
-                    
-            return paginated_events, total_count
         except Exception as e:
-            self.logger.error(f"Error getting paginated events moderated by {user_email}: {e}", exc_info=True)
-            return [], 0
+            self.logger.error(f"Error getting cursor-paginated events moderated by user {user_email}: {e}")
+            raise
 
     def update_event_roles(self, event_id: str, field: str, emails: List[str]) -> bool:
         """Update event roles (organizers or moderators)"""
         try:
-            if field not in ["organizers", "moderators"]:
-                self.logger.error(f"Invalid field for event roles: {field}")
-                return False
-                
             event_ref = self.collection.document(event_id)
             event_ref.update({field: emails})
-            
-            self.logger.info(f"Updated {field} for event {event_id}")
             return True
         except Exception as e:
-            self.logger.error(f"Error updating event roles for {event_id}: {e}", exc_info=True)
+            self.logger.error(f"Error updating event {event_id} {field}: {e}", exc_info=True)
             return False
 
     def get_user_event_summary(self, user_email: str) -> Dict[str, Any]:
         """Get a summary of all events related to a user"""
         try:
-            summary = {
-                "created_count": 0,
-                "organized_count": 0,
-                "moderated_count": 0,
-                "rsvp_count": 0
+            created_events = self.get_events_by_creator(user_email)
+            organized_events = self.get_events_organized_by_user(user_email)
+            moderated_events = self.get_events_moderated_by_user(user_email)
+            
+            return {
+                "created_count": len(created_events),
+                "organized_count": len(organized_events),
+                "moderated_count": len(moderated_events),
+                "total_managed": len(created_events) + len(organized_events) + len(moderated_events)
             }
-            
-            # Count created events - filter out archived in Python
-            created_query = self.collection.where("createdByEmail", "==", user_email)
-            created_docs = list(created_query.stream())
-            created_count = 0
-            for doc in created_docs:
-                event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    created_count += 1
-            summary["created_count"] = created_count
-            
-            # Count organized events - filter out archived in Python
-            organized_query = self.collection.where("organizers", "array_contains", user_email)
-            organized_docs = list(organized_query.stream())
-            organized_count = 0
-            for doc in organized_docs:
-                event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    organized_count += 1
-            summary["organized_count"] = organized_count
-            
-            # Count moderated events - filter out archived in Python
-            moderated_query = self.collection.where("moderators", "array_contains", user_email)
-            moderated_docs = list(moderated_query.stream())
-            moderated_count = 0
-            for doc in moderated_docs:
-                event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    moderated_count += 1
-            summary["moderated_count"] = moderated_count
-            
-            # Count RSVP events - filter out archived in Python
-            rsvp_query = self.collection.where("rsvpList", "array_contains", user_email)
-            rsvp_docs = list(rsvp_query.stream())
-            rsvp_count = 0
-            for doc in rsvp_docs:
-                event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    rsvp_count += 1
-            summary["rsvp_count"] = rsvp_count
-            
-            return summary
         except Exception as e:
             self.logger.error(f"Error getting user event summary for {user_email}: {e}", exc_info=True)
-            return {"created_count": 0, "organized_count": 0, "moderated_count": 0, "rsvp_count": 0}
+            return {"created_count": 0, "organized_count": 0, "moderated_count": 0, "total_managed": 0}
+

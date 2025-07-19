@@ -5,9 +5,6 @@ from app.services.event_ingestion_service import (
     get_unique_user_locations,
     ingest_events_for_all_cities
 )
-from app.services.event_service import (
-    delete_old_events
-)
 from app.auth.firebase_init import get_firestore_client
 
 

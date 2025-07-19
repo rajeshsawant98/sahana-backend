@@ -7,7 +7,7 @@ from app.services.user_service import (
 
 from app.auth.jwt_utils import get_current_user
 from app.auth.roles import user_only, admin_only
-from app.auth.event_roles import require_event_creator, require_event_organizer, require_event_moderator
+from app.auth.event_roles import require_event_creator, require_event_organizer
 from app.models.event import event as EventCreateRequest
 from app.models.pagination import PaginationParams, UserFilters
 from typing import Optional

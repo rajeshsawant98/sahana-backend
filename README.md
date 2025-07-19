@@ -48,6 +48,8 @@ pip install -r requirements.txt
 export GOOGLE_APPLICATION_CREDENTIALS=path/to/firebase-adminsdk.json
 ```
 
+**Important:** For cursor pagination to work properly, you'll need to create specific Firestore composite indexes. See [`docs/setup/URGENT_FIX_CURSOR_PAGINATION.md`](docs/setup/URGENT_FIX_CURSOR_PAGINATION.md) for immediate setup or [`docs/setup/FIRESTORE_INDEXES_CURSOR_PAGINATION.md`](docs/setup/FIRESTORE_INDEXES_CURSOR_PAGINATION.md) for comprehensive index documentation.
+
 ### 5. Create a `.env` file
 
 ```env

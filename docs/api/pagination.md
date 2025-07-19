@@ -1,12 +1,64 @@
 # API Pagination Documentation
 
-This document describes the pagination features added to the Sahana Backend APIs.
+This document describes the pagination features available in the Sahana Backend APIs, including both legacy offset-based pagination and the new cursor-based pagination.
 
 ## Overview
 
-Pagination has been seamlessly integrated into existing endpoints using optional query parameters. When pagination parameters are provided, endpoints return structured paginated responses. Without pagination parameters, endpoints maintain their original behavior for backward compatibility.
+The Sahana backend supports two pagination methods:
 
-## How It Works
+1. **Cursor-Based Pagination** (Recommended) - High-performance pagination for large datasets
+2. **Legacy Offset-Based Pagination** - Backward compatibility for existing integrations
+
+For detailed information about the cursor-based pagination implementation, see [CURSOR_PAGINATION_IMPLEMENTATION.md](./CURSOR_PAGINATION_IMPLEMENTATION.md).
+
+## Cursor-Based Pagination (Recommended)
+
+### Benefits
+
+- **High Performance**: Constant time complexity regardless of dataset size
+- **Consistency**: No duplicate or missing items during pagination
+- **Real-time Safe**: Handles concurrent data modifications gracefully
+- **Intelligent Filtering**: Database-level filtering with automatic index selection
+
+### Parameters
+
+- `cursor` (string, optional): Base64 encoded cursor for pagination position
+- `page_size` (integer): Number of items per page (default: 12, max: 100)
+- `direction` (string): Pagination direction ("next" or "prev", default: "next")
+
+### Example Usage
+
+```
+# First page
+GET /api/events?page_size=12
+
+# Next page using cursor
+GET /api/events?cursor=eyJzdGFydFRpbWUiOi...&page_size=12
+
+# With filters
+GET /api/events?city=San+Francisco&page_size=12&cursor=eyJzdGFydFRpbWUiOi...
+```
+
+### Response Format
+
+```json
+{
+  "items": [...],
+  "pagination": {
+    "next_cursor": "eyJzdGFydFRpbWUiOiIyMDI0LTEyLTE5VDEwOjAwOjAwWiIsImV2ZW50SWQiOiJldmVudDEyMyJ9",
+    "prev_cursor": null,
+    "has_next": true,
+    "has_previous": false,
+    "page_size": 12
+  }
+}
+```
+
+## Legacy Offset-Based Pagination
+
+Maintained for backward compatibility. When pagination parameters are provided, endpoints return structured paginated responses. Without pagination parameters, endpoints maintain their original behavior.
+
+### How It Works
 
 **Pagination is optional and enabled by providing the `page` parameter:**
 

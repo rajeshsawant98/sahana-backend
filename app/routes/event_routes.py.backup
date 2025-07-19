@@ -1,21 +1,40 @@
 from fastapi import APIRouter, HTTPException, Depends, Body, Query
 from app.services.event_service import (
     create_event,
+    get_all_events,
     get_all_events_paginated,
+    get_all_events_cursor_paginated,
     get_event_by_id,
+    get_events_moderated_by_user,
     get_events_moderated_by_user_paginated,
+    get_events_moderated_by_user_cursor_paginated,
+    get_events_organized_by_user,
     get_events_organized_by_user_paginated,
+    get_events_organized_by_user_cursor_paginated,
     update_event,
     delete_event,
+    get_my_events,
     get_my_events_paginated,
+    get_my_events_cursor_paginated,
     rsvp_to_event,
     cancel_user_rsvp,
+    get_user_rsvps,
     get_user_rsvps_paginated,
+    get_user_rsvps_cursor_paginated,
+    get_nearby_events,
     get_nearby_events_paginated,
+    get_nearby_events_cursor_paginated,
+    get_external_events,
+    get_external_events_paginated,
+    get_external_events_cursor_paginated,
     set_organizers,
     set_moderators,
+    archive_event,
     unarchive_event,
+    is_event_past,
+    get_archived_events,
     get_archived_events_paginated,
+    get_archived_events_cursor_paginated,
     archive_past_events,
     get_rsvp_list,
     get_rsvp_response_data,
@@ -31,9 +50,9 @@ from app.services.event_ingestion_service import (
 
 from app.auth.jwt_utils import get_current_user
 from app.auth.roles import user_only, admin_only
-from app.auth.event_roles import require_event_creator, require_event_organizer
+from app.auth.event_roles import require_event_creator, require_event_organizer, require_event_moderator
 from app.models.event import event as EventCreateRequest
-from app.models.pagination import EventFilters, CursorPaginationParams  # Re-add cursor pagination
+from app.models.pagination import PaginationParams, EventFilters, CursorPaginationParams
 from typing import Optional
 
 event_router = APIRouter()
@@ -47,13 +66,16 @@ async def create_new_event(event: EventCreateRequest , current_user: dict = Depe
         return {"message": "Event created successfully", "eventId": result["eventId"]}
     raise HTTPException(status_code=500, detail="Failed to create event")
 
-# Get all events (cursor pagination by default)
+# Get all events (with optional pagination and filters)
 @event_router.get("")
 async def fetch_all_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     # Filter parameters
     city: Optional[str] = Query(None, description="Filter by city"),
@@ -64,54 +86,94 @@ async def fetch_all_events(
     start_date: Optional[str] = Query(None, description="Filter by start date (ISO format)"),
     end_date: Optional[str] = Query(None, description="Filter by end date (ISO format)")
 ):
-    # Use cursor-based pagination by default
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
-    filters = EventFilters(
-        city=city, state=state, category=category, is_online=is_online,
-        creator_email=creator_email, start_date=start_date, end_date=end_date
-    )
-    return get_all_events_paginated(cursor_params, filters)
+    # Determine pagination method
+    use_cursor = cursor is not None or (page is None and page_size is not None)
+    
+    if use_cursor:
+        # Use cursor-based pagination
+        cursor_params = CursorPaginationParams(
+            cursor=cursor,
+            page_size=page_size or 12,
+            direction=direction or "next"
+        )
+        filters = EventFilters(
+            city=city, state=state, category=category, is_online=is_online,
+            creator_email=creator_email, start_date=start_date, end_date=end_date
+        )
+        return get_all_events_cursor_paginated(cursor_params, filters)
+    
+    elif page is not None:
+        # Use legacy offset-based pagination
+        pagination = PaginationParams(page=page, page_size=page_size or 10)
+        filters = EventFilters(
+            city=city, state=state, category=category, is_online=is_online,
+            creator_email=creator_email, start_date=start_date, end_date=end_date
+        )
+        return get_all_events_paginated(pagination, filters)
+    
+    else:
+        # Default: return all events (legacy behavior)
+        events = get_all_events()
+        return {"events": events}
 
-# Get archived events (creator only) with cursor pagination
+# Get archived events (creator only) with cursor and legacy pagination
 @event_router.get("/me/archived")
 async def get_my_archived_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     current_user: dict = Depends(user_only)
 ):
     user_email = current_user["email"]
     
-    # Use cursor-based pagination
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
-    return get_archived_events_paginated(cursor_params, user_email)
+    # Determine pagination method
+    use_cursor = cursor is not None or (page is None and page_size is not None)
+    
+    if use_cursor:
+        # Use cursor-based pagination
+        cursor_params = CursorPaginationParams(
+            cursor=cursor,
+            page_size=page_size or 12,
+            direction=direction or "next"
+        )
+        return get_archived_events_cursor_paginated(cursor_params, user_email)
+    
+    elif page is not None:
+        # Use legacy offset-based pagination
+        page_size = page_size or 10
+        pagination = PaginationParams(page=page, page_size=page_size)
+        return get_archived_events_paginated(pagination, user_email)
+    
+    else:
+        # Default: return all archived events (legacy behavior)
+        archived_events = get_archived_events(user_email)
+        return {"archived_events": archived_events, "count": len(archived_events)}
 
-# Get all archived events (admin only) with cursor pagination
+# Get all archived events (admin only) with optional pagination
 @event_router.get("/archived")
 async def get_all_archived_events(
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(10, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    page: Optional[int] = Query(None, ge=1, description="Page number (enables pagination)"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     current_user: dict = Depends(admin_only)
 ):
     """Get all archived events across the system (admin only)"""
     try:
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 10,
-            direction=direction or "next"
-        )
-        return get_archived_events_paginated(cursor_params)  # No user filter = get all
+        if page is not None:
+            page_size = page_size or 10
+            pagination = PaginationParams(page=page, page_size=page_size)
+            return get_archived_events_paginated(pagination)  # No user filter = get all
+        else:
+            archived_events = get_archived_events()  # No user filter = get all
+            return {
+                "archived_events": archived_events, 
+                "count": len(archived_events),
+                "message": f"Retrieved {len(archived_events)} archived events"
+            }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve archived events: {str(e)}")
 
@@ -173,92 +235,172 @@ async def unarchive_event_endpoint(event_id: str, current_user: dict = Depends(r
         return {"message": "Event restored successfully"}
     raise HTTPException(status_code=500, detail="Failed to restore event")
 
-# Events created by user (cursor pagination)
+# Events created by user (with cursor and legacy pagination)
 @event_router.get("/me/created")
 async def fetch_my_created_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     current_user: dict = Depends(user_only)
 ):
     email = current_user["email"]
     
-    # Use cursor-based pagination
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
-    return get_my_events_paginated(email, cursor_params)
+    # Determine pagination method
+    use_cursor = cursor is not None or (page is None and page_size is not None)
+    
+    if use_cursor:
+        # Use cursor-based pagination
+        cursor_params = CursorPaginationParams(
+            cursor=cursor,
+            page_size=page_size or 12,
+            direction=direction or "next"
+        )
+        return get_my_events_cursor_paginated(email, cursor_params)
+    
+    elif page is not None:
+        # Use legacy offset-based pagination
+        page_size = page_size or 10
+        pagination = PaginationParams(page=page, page_size=page_size)
+        return get_my_events_paginated(email, pagination)
+    
+    else:
+        # Default: return all created events (legacy behavior)
+        events = get_my_events(email)
+        if events:
+            return {"message": "Events fetched successfully", "events": events}
+        raise HTTPException(status_code=404, detail="No events found for the user")
 
-# Events RSVP'd by user (cursor pagination)
+# Events RSVP'd by user (with cursor and legacy pagination)
 @event_router.get("/me/rsvped")
 async def fetch_user_rsvped_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
         
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
-        return get_user_rsvps_paginated(email, cursor_params)
+        # Determine pagination method
+        use_cursor = cursor is not None or (page is None and page_size is not None)
+        
+        if use_cursor:
+            # Use cursor-based pagination
+            cursor_params = CursorPaginationParams(
+                cursor=cursor,
+                page_size=page_size or 12,
+                direction=direction or "next"
+            )
+            return get_user_rsvps_cursor_paginated(email, cursor_params)
+        
+        elif page is not None:
+            # Use legacy offset-based pagination
+            page_size = page_size or 10
+            pagination = PaginationParams(page=page, page_size=page_size)
+            return get_user_rsvps_paginated(email, pagination)
+        
+        else:
+            # Default: return all RSVPed events (legacy behavior)
+            events = get_user_rsvps(email)
+            if not events:
+                raise HTTPException(status_code=404, detail="No RSVP'd events found")
+            return {"message": "RSVP'd events fetched", "events": events}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Events organized by user (cursor pagination)
+# Events organized by user (with cursor and legacy pagination)
 @event_router.get("/me/organized")
 async def fetch_user_organized_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
         
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
-        return get_events_organized_by_user_paginated(email, cursor_params)
+        # Determine pagination method
+        use_cursor = cursor is not None or (page is None and page_size is not None)
+        
+        if use_cursor:
+            # Use cursor-based pagination
+            cursor_params = CursorPaginationParams(
+                cursor=cursor,
+                page_size=page_size or 12,
+                direction=direction or "next"
+            )
+            return get_events_organized_by_user_cursor_paginated(email, cursor_params)
+        
+        elif page is not None:
+            # Use legacy offset-based pagination
+            page_size = page_size or 10
+            pagination = PaginationParams(page=page, page_size=page_size)
+            return get_events_organized_by_user_paginated(email, pagination)
+        
+        else:
+            # Default: return all organized events (legacy behavior)
+            events = get_events_organized_by_user(email)
+            if not events:
+                raise HTTPException(status_code=404, detail="No organized events found")
+            return {"message": "Organized events fetched", "events": events}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Events moderated by user (cursor pagination)
+# Events moderated by user (with cursor and legacy pagination)
 @event_router.get("/me/moderated")
 async def fetch_user_moderated_events(
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
     direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
     
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
         
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
-        return get_events_moderated_by_user_paginated(email, cursor_params)
+        # Determine pagination method
+        use_cursor = cursor is not None or (page is None and page_size is not None)
+        
+        if use_cursor:
+            # Use cursor-based pagination
+            cursor_params = CursorPaginationParams(
+                cursor=cursor,
+                page_size=page_size or 12,
+                direction=direction or "next"
+            )
+            return get_events_moderated_by_user_cursor_paginated(email, cursor_params)
+        
+        elif page is not None:
+            # Use legacy offset-based pagination
+            page_size = page_size or 10
+            pagination = PaginationParams(page=page, page_size=page_size)
+            return get_events_moderated_by_user_paginated(email, pagination)
+        
+        else:
+            # Default: return all moderated events (legacy behavior)
+            events = get_events_moderated_by_user(email)
+            if not events:
+                raise HTTPException(status_code=404, detail="No moderated events found")
+            return {"message": "Moderated events fetched", "events": events}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     
@@ -279,23 +421,79 @@ def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict 
         "sample": raw_events[:3]
     }
 
-# Nearby community events by city/state (cursor pagination)
+# External events by location (with cursor and legacy pagination)
+@event_router.get("/location/external")
+def list_external_events(
+    city: str = Query(..., description="City name"),
+    state: str = Query(..., description="State name"),
+    
+    # Cursor pagination parameters
+    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
+    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)"),
+    
+    current_user: dict = Depends(user_only)
+):
+    # Determine pagination method
+    use_cursor = cursor is not None or (page is None and page_size is not None)
+    
+    if use_cursor:
+        # Use cursor-based pagination
+        cursor_params = CursorPaginationParams(
+            cursor=cursor,
+            page_size=page_size or 12,
+            direction=direction or "next"
+        )
+        return get_external_events_cursor_paginated(city, state, cursor_params)
+    
+    elif page is not None:
+        # Use legacy offset-based pagination
+        pagination = PaginationParams(page=page, page_size=page_size or 10)
+        return get_external_events_paginated(city, state, pagination)
+    
+    else:
+        # Default: return all external events (legacy behavior)
+        events = get_external_events(city, state)
+        return {"events": events, "count": len(events)}
+
+# Nearby community events by city/state (with cursor and legacy pagination)
 @event_router.get("/location/nearby")
 def list_nearby_events(
     city: str = Query(..., description="City name"),
     state: str = Query(..., description="State name"),
+    
     # Cursor pagination parameters
     cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction")
+    page_size: Optional[int] = Query(None, ge=1, le=100, description="Items per page"),
+    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
+    
+    # Legacy pagination parameters (for backward compatibility)
+    page: Optional[int] = Query(None, ge=1, description="Page number (legacy)")
 ):
-    # Use cursor-based pagination
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
-    return get_nearby_events_paginated(city, state, cursor_params)
+    # Determine pagination method
+    use_cursor = cursor is not None or (page is None and page_size is not None)
+    
+    if use_cursor:
+        # Use cursor-based pagination
+        cursor_params = CursorPaginationParams(
+            cursor=cursor,
+            page_size=page_size or 12,
+            direction=direction or "next"
+        )
+        return get_nearby_events_cursor_paginated(city, state, cursor_params)
+    
+    elif page is not None:
+        # Use legacy offset-based pagination
+        pagination = PaginationParams(page=page, page_size=page_size or 10)
+        return get_nearby_events_paginated(city, state, pagination)
+    
+    else:
+        # Default: return all nearby events (legacy behavior)
+        events = get_nearby_events(city, state)
+        return {"events": events, "count": len(events)}
 
 @event_router.patch("/{event_id}/organizers")
 async def update_event_organizers(
@@ -430,6 +628,3 @@ async def get_event_rsvps(
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get RSVP list: {str(e)}")
-
-# Export the router for the application
-router = event_router

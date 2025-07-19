@@ -1,6 +1,6 @@
 from app.repositories.events import EventRepositoryManager
 from app.services.user_service import validate_user_emails
-from app.models.pagination import PaginationParams, EventPaginatedResponse, EventFilters, PaginatedResponse
+from app.models.pagination import EventFilters, CursorPaginationParams, EventCursorPaginatedResponse
 from app.utils.logger import get_service_logger
 from typing import Optional
 from datetime import datetime, timedelta
@@ -51,7 +51,6 @@ def get_my_events(email: str):
         return []
 
 def rsvp_to_event(event_id: str, email: str):
-    """RSVP to event with business logic validation"""
     try:
         # Check if event exists
         event = event_repo.get_event_by_id(event_id)
@@ -77,7 +76,6 @@ def rsvp_to_event(event_id: str, email: str):
         return False
 
 def cancel_user_rsvp(event_id: str, email: str):
-    """Cancel RSVP with business logic validation"""
     try:
         # Check if event exists
         event = event_repo.get_event_by_id(event_id)
@@ -111,26 +109,11 @@ def get_events_organized_by_user(email: str):
         logger.error(f"Error in get_events_organized_by_user: {e}", exc_info=True)
         return []
 
-def get_events_moderated_by_user(email: str):
-    try:
-        return event_repo.get_events_moderated_by_user(email)
-    except Exception as e:
-        logger.error(f"Error in get_events_moderated_by_user: {e}", exc_info=True)
-        return []   
-
-
 def get_rsvp_list(event_id: str):
     try:
         return event_repo.get_rsvp_list(event_id)
     except Exception as e:
         logger.error(f"Error in get_rsvp_list: {e}", exc_info=True)
-        return []
-
-def get_nearby_events(city: str, state: str):
-    try:
-        return event_repo.get_nearby_events(city, state)
-    except Exception as e:
-        logger.error(f"Error in get_nearby_events: {e}", exc_info=True)
         return []
 
 def get_external_events(city: str, state: str) -> list[dict]:
@@ -174,7 +157,6 @@ def delete_old_events() -> int:
     return event_repo.delete_events_before_today()
 
 def archive_event(event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
-    """Archive/soft delete an event"""
     try:
         return event_repo.archive_event(event_id, archived_by, reason)
     except Exception as e:
@@ -182,7 +164,6 @@ def archive_event(event_id: str, archived_by: str, reason: str = "Event archived
         return False
 
 def unarchive_event(event_id: str) -> bool:
-    """Restore an archived event"""
     try:
         return event_repo.unarchive_event(event_id)
     except Exception as e:
@@ -190,29 +171,13 @@ def unarchive_event(event_id: str) -> bool:
         return False
 
 def get_archived_events(user_email: Optional[str] = None) -> list[dict]:
-    """Get archived events, optionally filtered by creator"""
     try:
         return event_repo.get_archived_events(user_email)
     except Exception as e:
         logger.error(f"Error in get_archived_events: {e}", exc_info=True)
         return []
 
-def get_archived_events_paginated(pagination: PaginationParams, user_email: Optional[str] = None) -> PaginatedResponse:
-    """Get paginated archived events, optionally filtered by creator"""
-    try:
-        events, total_count = event_repo.get_archived_events_paginated(pagination, user_email)
-        return PaginatedResponse.create(
-            items=events,
-            total_count=total_count,
-            page=pagination.page,
-            page_size=pagination.page_size
-        )
-    except Exception as e:
-        logger.error(f"Error in get_archived_events_paginated: {e}", exc_info=True)
-        return PaginatedResponse.create(items=[], total_count=0, page=1, page_size=pagination.page_size)
-
 def archive_past_events(archived_by: str = "system") -> int:
-    """Archive all past events that have ended - Business logic in service layer"""
     try:
         # Get all events that could potentially be archived
         events_to_check = event_repo.get_events_for_archiving()
@@ -224,11 +189,11 @@ def archive_past_events(archived_by: str = "system") -> int:
             
             if start_time:
                 try:
-                    # Parse start time and calculate end time - Business logic
+                    # Parse start time and calculate end time
                     start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
                     end_dt = start_dt + timedelta(minutes=duration)
                     
-                    # If event has ended, mark for archiving - Business logic
+                    # If event has ended, mark for archiving
                     if end_dt < datetime.utcnow().replace(tzinfo=end_dt.tzinfo):
                         events_to_archive.append(event["documentId"])
                 except Exception as parse_error:
@@ -243,7 +208,6 @@ def archive_past_events(archived_by: str = "system") -> int:
         return 0
 
 def is_event_past(event: dict) -> bool:
-    """Check if an event is in the past"""
     try:
         start_time = event.get("startTime")
         if not start_time:
@@ -261,68 +225,85 @@ def is_event_past(event: dict) -> bool:
         logger.error(f"Error checking if event is past: {e}", exc_info=True)
         return False
 
-def get_all_events_paginated(pagination: PaginationParams, filters: Optional[EventFilters] = None) -> EventPaginatedResponse:
-    """Get paginated events with optional filters"""
+def get_all_events_paginated(cursor_params: CursorPaginationParams, filters: Optional[EventFilters] = None) -> EventCursorPaginatedResponse:
     try:
-        events, total_count = event_repo.get_all_events_paginated(pagination, filters)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_all_events_paginated(cursor_params, filters)
+        return EventCursorPaginatedResponse.create(
+            items=events,
+            next_cursor=next_cursor,
+            prev_cursor=prev_cursor,
+            has_next=has_next,
+            has_previous=has_previous,
+            page_size=cursor_params.page_size
+        )
     except Exception as e:
         logger.error(f"Error in get_all_events_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
-def get_my_events_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated events created by user"""
+def get_nearby_events_paginated(city: str, state: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
     try:
-        events, total_count = event_repo.get_events_by_creator_paginated(email, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
-    except Exception as e:
-        logger.error(f"Error in get_my_events_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
-
-def get_user_rsvps_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated events user has RSVP'd to"""
-    try:
-        events, total_count = event_repo.get_user_rsvps_paginated(email, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
-    except Exception as e:
-        logger.error(f"Error in get_user_rsvps_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
-
-def get_events_organized_by_user_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated events organized by user"""
-    try:
-        events, total_count = event_repo.get_events_organized_by_user_paginated(email, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
-    except Exception as e:
-        logger.error(f"Error in get_events_organized_by_user_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
-
-def get_events_moderated_by_user_paginated(email: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated events moderated by user"""
-    try:
-        events, total_count = event_repo.get_events_moderated_by_user_paginated(email, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
-    except Exception as e:
-        logger.error(f"Error in get_events_moderated_by_user_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
-
-def get_nearby_events_paginated(city: str, state: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated nearby events"""
-    try:
-        events, total_count = event_repo.get_nearby_events_paginated(city, state, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_nearby_events_paginated(city, state, cursor_params)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
     except Exception as e:
         logger.error(f"Error in get_nearby_events_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
-def get_external_events_paginated(city: str, state: str, pagination: PaginationParams) -> EventPaginatedResponse:
-    """Get paginated external events"""
+def get_my_events_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated events created by user"""
     try:
-        events, total_count = event_repo.get_external_events_paginated(city, state, pagination)
-        return EventPaginatedResponse.create(events, total_count, pagination.page, pagination.page_size)
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_events_by_creator_paginated(email, cursor_params)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
     except Exception as e:
-        logger.error(f"Error in get_external_events_paginated: {e}", exc_info=True)
-        return EventPaginatedResponse.create([], 0, pagination.page, pagination.page_size)
+        logger.error(f"Error in get_my_events_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
+
+def get_user_rsvps_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated events user has RSVP'd to"""
+    try:
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_user_rsvps_paginated(email, cursor_params)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
+    except Exception as e:
+        logger.error(f"Error in get_user_rsvps_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
+
+def get_events_organized_by_user_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated events organized by user"""
+    try:
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_events_organized_by_user_paginated(email, cursor_params)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
+    except Exception as e:
+        logger.error(f"Error in get_events_organized_by_user_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
+
+def get_events_moderated_by_user_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated events moderated by user"""
+    try:
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_events_moderated_by_user_paginated(email, cursor_params)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
+    except Exception as e:
+        logger.error(f"Error in get_events_moderated_by_user_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
+
+def get_archived_events_paginated(cursor_params: CursorPaginationParams, user_email: Optional[str] = None) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated archived events"""
+    try:
+        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_archived_events_paginated(cursor_params, user_email)
+        return EventCursorPaginatedResponse.create(
+            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+        )
+    except Exception as e:
+        logger.error(f"Error in get_archived_events_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
 def get_rsvp_response_data(event_id: str, user_email: str, action: str) -> dict:
     """Get formatted RSVP response data - centralized response formatting"""

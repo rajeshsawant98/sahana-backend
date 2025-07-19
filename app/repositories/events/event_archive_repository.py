@@ -1,7 +1,7 @@
 from datetime import datetime
 from google.cloud.firestore_v1 import Query, CollectionReference
 from ..base_repository import BaseRepository
-from app.models.pagination import PaginationParams
+from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
 from typing import Tuple, List, Optional, Dict, Any
 
@@ -93,46 +93,80 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error getting archived events: {e}", exc_info=True)
             return []
 
-    def get_archived_events_paginated(self, pagination: PaginationParams, user_email: Optional[str] = None) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated archived events, optionally filtered by user"""
+    def get_archived_events_paginated(
+        self, 
+        cursor_params: Optional[CursorPaginationParams] = None,
+        user_email: Optional[str] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        Get archived events using cursor-based pagination.
+        Orders by archivedAt descending (most recent first) for consistent pagination.
+        
+        Args:
+            cursor_params: Cursor pagination parameters
+            user_email: Optional filter by user who created the events
+        
+        Returns:
+            Tuple of (list of archived events, next cursor string)
+        """
         try:
-            # Use single filter approach to avoid Firestore issues
+            self.logger.info(f"Getting cursor-paginated archived events (user: {user_email})")
+            
+            # Build base query for archived events
+            query = self.collection.where("isArchived", "==", True)
+            
+            # Add user filter if specified
             if user_email:
-                # If filtering by user, start with that filter
-                query = self.collection.where("createdByEmail", "==", user_email)
-                
-                # Get all docs and filter for archived events in Python
-                all_docs = list(query.stream())
-                filtered_events = []
-                for doc in all_docs:
-                    event_data = doc.to_dict()
-                    if event_data and event_data.get("isArchived") == True:
-                        filtered_events.append(event_data)
-            else:
-                # If not filtering by user, filter by archived status only
-                query = self.collection.where("isArchived", "==", True)
-                
-                all_docs = list(query.stream())
-                filtered_events = []
-                for doc in all_docs:
-                    event_data = doc.to_dict()
-                    if event_data:
-                        filtered_events.append(event_data)
+                query = query.where("createdByEmail", "==", user_email)
             
-            total_count = len(filtered_events)
+            # Apply sorting - using archivedAt descending (most recent first)
+            query = query.order_by('archivedAt', direction=Query.DESCENDING).order_by('eventId')
             
-            # Sort by archived date in Python (most recent first)
-            filtered_events.sort(key=lambda x: x.get("archivedAt", ""), reverse=True)
+            # Handle cursor positioning
+            if cursor_params and cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if cursor_info:
+                    # For archived events, start_time represents archivedAt
+                    query = query.start_after([cursor_info.start_time, cursor_info.event_id])
             
-            # Apply pagination manually
-            start = pagination.offset
-            end = start + pagination.page_size
-            paginated_events = filtered_events[start:end]
+            # Apply limit
+            page_size = cursor_params.page_size if cursor_params else 20
+            query = query.limit(page_size + 1)  # Fetch one extra to check for next page
             
-            return paginated_events, total_count
+            # Execute query
+            results = list(query.stream())
+            
+            # Process results
+            events = []
+            has_next_page = len(results) > page_size
+            
+            # If we have more results than limit, remove the extra one
+            if has_next_page:
+                results = results[:-1]
+            
+            # Convert documents to dictionaries
+            for doc in results:
+                event_data = doc.to_dict()
+                if event_data:  # Ensure event_data is not None
+                    event_data['eventId'] = doc.id
+                    events.append(event_data)
+            
+            # Generate cursor for next page
+            next_cursor = None
+            if has_next_page and events:
+                last_event = events[-1]
+                cursor_info = CursorInfo(
+                    start_time=last_event.get('archivedAt'),  # Use archivedAt for cursor
+                    event_id=last_event.get('eventId')
+                )
+                next_cursor = cursor_info.encode()
+            
+            self.logger.info(f"Retrieved {len(events)} archived events (has_next: {has_next_page})")
+            return events, next_cursor
+            
         except Exception as e:
-            self.logger.error(f"Error getting paginated archived events: {e}", exc_info=True)
-            return [], 0
+            self.logger.error(f"Error getting cursor-paginated archived events: {e}")
+            raise
 
     def get_archive_statistics(self) -> Dict[str, Any]:
         """Get statistics about archived events"""

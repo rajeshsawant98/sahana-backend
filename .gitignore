@@ -23,3 +23,23 @@ eventbrite_data.json
 
 # Cloud
 .gcloudignore
+
+# Firebase
+.firebase/
+# Note: .firebaserc should be committed (contains project config, no secrets)
+
+# IDE and Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation (temp files)
+*_IMPLEMENTATION_SUMMARY.md
+*_strategy.md

@@ -1,6 +1,6 @@
 from google.cloud.firestore_v1 import ArrayRemove
 from ..base_repository import BaseRepository
-from app.models.pagination import PaginationParams
+from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
 from typing import Tuple, List, Optional, Dict, Any
 
@@ -85,34 +85,77 @@ class EventRsvpRepository(BaseRepository):
             self.logger.error(f"Error getting user RSVPs for {user_email}: {e}", exc_info=True)
             return []
 
-    def get_user_rsvps_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events a user has RSVP'd to"""
+    def get_user_rsvps_paginated(
+        self, 
+        user_email: str, 
+        cursor_params: Optional[CursorPaginationParams] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        Get user's RSVPs using cursor-based pagination.
+        Orders by startTime ascending for consistent pagination.
+        
+        Args:
+            user_email: User's email for filtering RSVPs
+            cursor_params: Cursor pagination parameters
+        
+        Returns:
+            Tuple of (list of events, next cursor string)
+        """
         try:
-            # Build query
-            query = self.collection.where("rsvpList", "array_contains", user_email)
+            self.logger.info(f"Getting cursor-paginated RSVPs for user: {user_email}")
             
-            # Get all docs and filter archived events
-            all_docs = list(query.stream())
-            non_archived_events = []
-            for doc in all_docs:
+            # Build base query filtering by user's RSVP and excluding archived events
+            query = (self.collection
+                    .where("rsvpList", "array_contains", user_email)
+                    .where("isArchived", "!=", True))
+            
+            # Apply sorting and cursor positioning
+            query = query.order_by('startTime').order_by('eventId')
+            
+            # Handle cursor positioning
+            if cursor_params and cursor_params.cursor:
+                cursor_info = CursorInfo.decode(cursor_params.cursor)
+                if cursor_info:
+                    query = query.start_after([cursor_info.start_time, cursor_info.event_id])
+            
+            # Apply limit
+            page_size = cursor_params.page_size if cursor_params else 20
+            query = query.limit(page_size + 1)  # Fetch one extra to check for next page
+            
+            # Execute query
+            results = list(query.stream())
+            
+            # Process results
+            events = []
+            has_next_page = len(results) > page_size
+            
+            # If we have more results than limit, remove the extra one
+            if has_next_page:
+                results = results[:-1]
+            
+            # Convert documents to dictionaries
+            for doc in results:
                 event_data = doc.to_dict()
-                if event_data and event_data.get("isArchived") != True:
-                    non_archived_events.append(event_data)
+                if event_data:  # Ensure event_data is not None
+                    event_data['eventId'] = doc.id
+                    events.append(event_data)
             
-            total_count = len(non_archived_events)
+            # Generate cursor for next page
+            next_cursor = None
+            if has_next_page and events:
+                last_event = events[-1]
+                cursor_info = CursorInfo(
+                    start_time=last_event.get('startTime'),
+                    event_id=last_event.get('eventId')
+                )
+                next_cursor = cursor_info.encode()
             
-            # Apply sorting by start time
-            non_archived_events.sort(key=lambda x: x.get("startTime", ""))
+            self.logger.info(f"Retrieved {len(events)} RSVPs for user {user_email} (has_next: {has_next_page})")
+            return events, next_cursor
             
-            # Apply pagination manually
-            start = pagination.offset
-            end = start + pagination.page_size
-            paginated_events = non_archived_events[start:end]
-            
-            return paginated_events, total_count
         except Exception as e:
-            self.logger.error(f"Error getting paginated user RSVPs for {user_email}: {e}", exc_info=True)
-            return [], 0
+            self.logger.error(f"Error getting cursor-paginated RSVPs for user {user_email}: {e}")
+            raise
 
     def get_rsvp_statistics(self, event_id: str) -> Dict[str, Any]:
         """Get RSVP statistics for an event"""

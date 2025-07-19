@@ -3,7 +3,7 @@ from .event_query_repository import EventQueryRepository
 from .event_archive_repository import EventArchiveRepository
 from .event_rsvp_repository import EventRsvpRepository
 from .event_user_repository import EventUserRepository
-from app.models.pagination import PaginationParams, EventFilters
+from app.models.pagination import PaginationParams, EventFilters, CursorPaginationParams
 from app.utils.logger import get_repository_logger
 from typing import Tuple, List, Optional, Dict, Any
 
@@ -38,30 +38,18 @@ class EventRepositoryManager:
         """Delete an event"""
         return self.crud_repo.delete_event(event_id)
 
-    # Query Operations (delegated to EventQueryRepository)
+    # Query Operations (delegated to EventQueryRepository) 
     def get_all_events(self) -> List[Dict[str, Any]]:
-        """Get all non-archived events"""
+        """Get all events (non-paginated)"""
         return self.query_repo.get_all_events()
 
-    def get_all_events_paginated(self, pagination: PaginationParams, filters: Optional[EventFilters] = None) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events with optional filters"""
-        return self.query_repo.get_all_events_paginated(pagination, filters)
+    def get_all_events_paginated(self, cursor_params: CursorPaginationParams, filters: Optional[EventFilters] = None) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor-paginated events with optional filters"""
+        return self.query_repo.get_all_events_paginated(cursor_params, filters)
 
-    def get_nearby_events(self, city: str, state: str) -> List[Dict[str, Any]]:
-        """Get events in a specific city and state"""
-        return self.query_repo.get_nearby_events(city, state)
-
-    def get_nearby_events_paginated(self, city: str, state: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events in a specific city and state"""
-        return self.query_repo.get_nearby_events_paginated(city, state, pagination)
-
-    def get_external_events(self, city: str, state: str) -> List[Dict[str, Any]]:
-        """Get external (scraped) events in a specific city and state"""
-        return self.query_repo.get_external_events(city, state)
-
-    def get_external_events_paginated(self, city: str, state: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated external (scraped) events in a specific city and state"""
-        return self.query_repo.get_external_events_paginated(city, state, pagination)
+    def get_nearby_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor-paginated events in a specific city and state"""
+        return self.query_repo.get_nearby_events_paginated(city, state, cursor_params)
 
     def get_events_for_archiving(self) -> List[Dict[str, Any]]:
         """Get events that should be archived"""
@@ -88,9 +76,10 @@ class EventRepositoryManager:
         """Get all archived events, optionally filtered by user"""
         return self.archive_repo.get_archived_events(user_email)
 
-    def get_archived_events_paginated(self, pagination: PaginationParams, user_email: Optional[str] = None) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated archived events, optionally filtered by user"""
-        return self.archive_repo.get_archived_events_paginated(pagination, user_email)
+    def get_archived_events_paginated(self, cursor_params: CursorPaginationParams, user_email: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated archived events, optionally filtered by user"""
+        events, next_cursor = self.archive_repo.get_archived_events_paginated(cursor_params, user_email)
+        return events, next_cursor, None, bool(next_cursor), False
 
     def get_archive_statistics(self) -> Dict[str, Any]:
         """Get statistics about archived events"""
@@ -110,12 +99,13 @@ class EventRepositoryManager:
         return self.rsvp_repo.get_rsvp_list(event_id)
 
     def get_user_rsvps(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get all events a user has RSVP'd to"""
+        """Get events a user has RSVP'd to (non-paginated)"""
         return self.rsvp_repo.get_user_rsvps(user_email)
 
-    def get_user_rsvps_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events a user has RSVP'd to"""
-        return self.rsvp_repo.get_user_rsvps_paginated(user_email, pagination)
+    def get_user_rsvps_paginated(self, user_email: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated events a user has RSVP'd to"""
+        events, next_cursor = self.rsvp_repo.get_user_rsvps_paginated(user_email, cursor_params)
+        return events, next_cursor, None, bool(next_cursor), False
 
     def get_rsvp_statistics(self, event_id: str) -> Dict[str, Any]:
         """Get RSVP statistics for an event"""
@@ -126,25 +116,32 @@ class EventRepositoryManager:
         """Get all events created by a specific user"""
         return self.user_repo.get_events_by_creator(email)
 
-    def get_events_by_creator_paginated(self, email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events created by a specific user"""
-        return self.user_repo.get_events_by_creator_paginated(email, pagination)
+    def get_events_by_creator_paginated(self, email: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated events created by a specific user"""
+        events, next_cursor = self.user_repo.get_events_by_creator_paginated(email, cursor_params)
+        return events, next_cursor, None, bool(next_cursor), False
 
     def get_events_organized_by_user(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get all events organized by a specific user"""
+        """Get events organized by a specific user (non-paginated)"""
         return self.user_repo.get_events_organized_by_user(user_email)
 
-    def get_events_organized_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events organized by a specific user"""
-        return self.user_repo.get_events_organized_by_user_paginated(user_email, pagination)
+    def get_events_organized_by_user_paginated(self, user_email: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated events organized by a specific user"""
+        events, next_cursor = self.user_repo.get_events_organized_by_user_paginated(user_email, cursor_params)
+        return events, next_cursor, None, bool(next_cursor), False
 
-    def get_events_moderated_by_user(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get all events moderated by a specific user"""
-        return self.user_repo.get_events_moderated_by_user(user_email)
+    def get_external_events(self, city, state):
+        """Get external events for a city and state"""
+        return self.query_repo.get_external_events(city, state)
 
-    def get_events_moderated_by_user_paginated(self, user_email: str, pagination: PaginationParams) -> Tuple[List[Dict[str, Any]], int]:
-        """Get paginated events moderated by a specific user"""
-        return self.user_repo.get_events_moderated_by_user_paginated(user_email, pagination)
+    def get_external_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated external events for a city and state"""
+        return self.query_repo.get_external_events_paginated(city, state, cursor_params)
+
+    def get_events_moderated_by_user_paginated(self, user_email: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+        """Get cursor paginated events moderated by a specific user"""
+        events, next_cursor = self.user_repo.get_events_moderated_by_user_paginated(user_email, cursor_params)
+        return events, next_cursor, None, bool(next_cursor), False
 
     def update_event_roles(self, event_id: str, field: str, emails: List[str]) -> bool:
         """Update event roles (organizers or moderators)"""

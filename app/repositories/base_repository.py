@@ -1,7 +1,8 @@
 from datetime import datetime
 from google.cloud.firestore_v1 import Query, CollectionReference
+from google.cloud import firestore
 from app.auth.firebase_init import get_firestore_client
-from app.models.pagination import PaginationParams, EventFilters
+from app.models.pagination import EventFilters, CursorInfo, CursorPaginationParams
 from app.utils.logger import get_repository_logger
 from typing import Optional, Union
 
@@ -13,7 +14,7 @@ class BaseRepository:
         self.collection = self.db.collection(collection_name)
         self.logger = get_repository_logger(__name__)
 
-    def _apply_base_filters(self, query: Union[Query, CollectionReference], include_archived: bool = False) -> Query:
+    def _apply_base_filters(self, query: Union[Query, CollectionReference]) -> Query:
         """Apply base filters that are common across most queries"""
         # Convert CollectionReference to Query if needed
         if isinstance(query, CollectionReference):
@@ -90,13 +91,42 @@ class BaseRepository:
         """Apply sorting to query"""
         return query.order_by(sort_by, direction=direction)
 
-    def _apply_pagination(self, query: Query, pagination: PaginationParams) -> Query:
-        """Apply pagination to query"""
-        return query.offset(pagination.offset).limit(pagination.page_size)
-
     def _get_total_count(self, query: Query) -> int:
         """Get total count for pagination metadata"""
         return len(list(query.stream()))
+
+    def _apply_cursor_sorting(self, query: Query) -> Query:
+        """Apply cursor-based sorting: startTime ASC, then document ID ASC"""
+        return query.order_by("startTime", direction="ASCENDING").order_by("__name__", direction="ASCENDING")
+
+    def _apply_cursor_filters(self, query: Query, cursor_info: Optional[CursorInfo], direction: str) -> Query:
+        """Apply cursor-based filtering using simple where clauses"""
+        if not cursor_info:
+            return query
+            
+        if direction == "next":
+            # Get events after cursor position - handle None startTime properly
+            if cursor_info.start_time is None:
+                # If cursor startTime is None, we want all events after None (all non-None events)
+                # Since Firestore can't query for "not None", we'll just return all and filter in app layer
+                # Actually, for next pagination from None event, we want events with actual dates
+                pass  # Don't add any filter, let application layer handle it
+            else:
+                # This handles the case where startTime >= cursor_start_time
+                # For events with same startTime, we'll filter by ID in the application layer
+                query = query.where("startTime", ">=", cursor_info.start_time)
+        else:  # direction == "prev"
+            # Get events before cursor position - for backward pagination
+            # We need to fetch a broader range and let application layer do precise filtering
+            if cursor_info.start_time is None:
+                # If cursor startTime is None, there are no events before it (None comes first)
+                # Return an empty query that matches nothing
+                query = query.where("startTime", "<", "1900-01-01T00:00:00Z")  # Impossible condition
+            else:
+                # For backward pagination, get events with startTime < cursor OR 
+                # startTime = cursor (let app layer filter by eventId)
+                query = query.where("startTime", "<=", cursor_info.start_time)
+        return query
 
     def get_by_id(self, doc_id: str) -> dict | None:
         """Generic get by ID method"""
