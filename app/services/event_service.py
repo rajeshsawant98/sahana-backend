@@ -2,6 +2,7 @@ from app.repositories.events import EventRepositoryManager
 from app.services.user_service import validate_user_emails
 from app.models.pagination import EventFilters, CursorPaginationParams, EventCursorPaginatedResponse
 from app.utils.logger import get_service_logger
+from app.utils.event_validators import EventValidator
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -52,19 +53,12 @@ def get_my_events(email: str):
 
 def rsvp_to_event(event_id: str, email: str):
     try:
-        # Check if event exists
+        # Get and validate event
         event = event_repo.get_event_by_id(event_id)
-        if not event:
-            raise ValueError("Event not found")
+        event = EventValidator.validate_event_exists(event)
         
-        # Check if event is archived
-        if event.get("isArchived", False):
-            raise ValueError("Cannot RSVP to archived event")
-        
-        # Check if user is already RSVP'd
-        rsvp_list = event.get("rsvpList", [])
-        if email in rsvp_list:
-            raise ValueError("You have already RSVP'd to this event")
+        # Validate RSVP preconditions
+        EventValidator.validate_rsvp_preconditions(event, email)
         
         # Perform RSVP
         return event_repo.rsvp_to_event(event_id, email)
@@ -77,15 +71,12 @@ def rsvp_to_event(event_id: str, email: str):
 
 def cancel_user_rsvp(event_id: str, email: str):
     try:
-        # Check if event exists
+        # Get and validate event
         event = event_repo.get_event_by_id(event_id)
-        if not event:
-            raise ValueError("Event not found")
+        event = EventValidator.validate_event_exists(event)
         
-        # Check if user has RSVP'd
-        rsvp_list = event.get("rsvpList", [])
-        if email not in rsvp_list:
-            raise ValueError("You have not RSVP'd to this event")
+        # Validate cancellation preconditions
+        EventValidator.validate_cancel_rsvp_preconditions(event, email)
         
         # Cancel RSVP
         return event_repo.cancel_rsvp(event_id, email)
@@ -93,6 +84,7 @@ def cancel_user_rsvp(event_id: str, email: str):
         # Re-raise validation errors
         raise
     except Exception as e:
+        logger.error(f"Error in cancel_user_rsvp: {e}", exc_info=True)
         raise Exception(f"Error cancelling RSVP: {e}")
 
 def get_user_rsvps(email: str):

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi import APIRouter, Depends, Body, Query
 from app.services.event_service import (
     create_event,
     get_all_events_paginated,
@@ -33,7 +33,9 @@ from app.auth.jwt_utils import get_current_user
 from app.auth.roles import user_only, admin_only
 from app.auth.event_roles import require_event_creator, require_event_organizer
 from app.models.event import event as EventCreateRequest
-from app.models.pagination import EventFilters, CursorPaginationParams  # Re-add cursor pagination
+from app.models.pagination import EventFilters, CursorPaginationParams
+from app.utils.pagination_helpers import get_cursor_pagination_params, get_event_filter_params
+from app.utils.http_exceptions import event_not_found, operation_failed, HTTPExceptionHelper
 from typing import Optional
 
 event_router = APIRouter()
@@ -45,55 +47,24 @@ async def create_new_event(event: EventCreateRequest , current_user: dict = Depe
     result = create_event(event_data)
     if result:
         return {"message": "Event created successfully", "eventId": result["eventId"]}
-    raise HTTPException(status_code=500, detail="Failed to create event")
+    raise operation_failed("create event")
 
 # Get all events (cursor pagination by default)
 @event_router.get("")
 async def fetch_all_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
-    # Filter parameters
-    city: Optional[str] = Query(None, description="Filter by city"),
-    state: Optional[str] = Query(None, description="Filter by state"),
-    category: Optional[str] = Query(None, description="Filter by category"),
-    is_online: Optional[bool] = Query(None, description="Filter by online events"),
-    creator_email: Optional[str] = Query(None, description="Filter by creator email"),
-    start_date: Optional[str] = Query(None, description="Filter by start date (ISO format)"),
-    end_date: Optional[str] = Query(None, description="Filter by end date (ISO format)")
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
+    filter_params: dict = Depends(get_event_filter_params)
 ):
-    # Use cursor-based pagination by default
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
-    filters = EventFilters(
-        city=city, state=state, category=category, is_online=is_online,
-        creator_email=creator_email, start_date=start_date, end_date=end_date
-    )
+    filters = EventFilters(**filter_params)
     return get_all_events_paginated(cursor_params, filters)
 
 # Get archived events (creator only) with cursor pagination
 @event_router.get("/me/archived")
 async def get_my_archived_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
     current_user: dict = Depends(user_only)
 ):
     user_email = current_user["email"]
-    
-    # Use cursor-based pagination
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
     return get_archived_events_paginated(cursor_params, user_email)
 
 # Get all archived events (admin only) with cursor pagination
@@ -113,7 +84,7 @@ async def get_all_archived_events(
         )
         return get_archived_events_paginated(cursor_params)  # No user filter = get all
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve archived events: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to retrieve archived events: {str(e)}")
 
 # Get event by ID
 @event_router.get("/{event_id}")
@@ -121,23 +92,23 @@ async def fetch_event_by_id(event_id: str):
     event = get_event_by_id(event_id)
     if event:
         return event
-    raise HTTPException(status_code=404, detail="Event not found")
+    raise event_not_found()
 
 # Update event (creator only)
 @event_router.put("/{event_id}")
-async def modify_event(event_id: str, update_data: dict, current_user: dict = Depends(require_event_creator)):
+async def update_existing_event(event_id: str, update_data: dict = Body(...), current_user: dict = Depends(require_event_creator)):
     success = update_event(event_id, update_data)
     if success:
         return {"message": "Event updated successfully"}
-    raise HTTPException(status_code=500, detail="Failed to update event")
+    raise operation_failed("update event")
 
 # Delete event (creator only)
 @event_router.delete("/{event_id}")
-async def remove_event(event_id: str, current_user: dict = Depends(require_event_creator)):
+async def delete_existing_event(event_id: str, current_user: dict = Depends(require_event_creator)):
     success = delete_event(event_id)
     if success:
         return {"message": "Event deleted successfully"}
-    raise HTTPException(status_code=500, detail="Failed to delete event")
+    raise operation_failed("delete event")
 
 # Archive event (creator only)
 @event_router.patch("/{event_id}/archive")
@@ -161,9 +132,9 @@ async def archive_event_endpoint(
     else:
         error_type = result.get("error_type", "server_error")
         if error_type == "not_found":
-            raise HTTPException(status_code=404, detail=result["error"])
+            raise HTTPExceptionHelper.not_found(result["error"])
         else:
-            raise HTTPException(status_code=500, detail=result["error"])
+            raise HTTPExceptionHelper.server_error(result["error"])
 
 # Unarchive event (creator only)
 @event_router.patch("/{event_id}/unarchive")
@@ -171,96 +142,54 @@ async def unarchive_event_endpoint(event_id: str, current_user: dict = Depends(r
     success = unarchive_event(event_id)
     if success:
         return {"message": "Event restored successfully"}
-    raise HTTPException(status_code=500, detail="Failed to restore event")
+    raise HTTPExceptionHelper.server_error("Failed to restore event")
 
 # Events created by user (cursor pagination)
 @event_router.get("/me/created")
 async def fetch_my_created_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
     current_user: dict = Depends(user_only)
 ):
     email = current_user["email"]
-    
-    # Use cursor-based pagination
-    cursor_params = CursorPaginationParams(
-        cursor=cursor,
-        page_size=page_size or 12,
-        direction=direction or "next"
-    )
     return get_my_events_paginated(email, cursor_params)
 
 # Events RSVP'd by user (cursor pagination)
 @event_router.get("/me/rsvped")
 async def fetch_user_rsvped_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
-        
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
         return get_user_rsvps_paginated(email, cursor_params)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPExceptionHelper.server_error(str(e))
+
+# Events organized by user (cursor pagination)
 
 # Events organized by user (cursor pagination)
 @event_router.get("/me/organized")
 async def fetch_user_organized_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
-        
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
         return get_events_organized_by_user_paginated(email, cursor_params)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPExceptionHelper.server_error(str(e))
 
 # Events moderated by user (cursor pagination)
 @event_router.get("/me/moderated")
 async def fetch_user_moderated_events(
-    # Cursor pagination parameters
-    cursor: Optional[str] = Query(None, description="Cursor for pagination"),
-    page_size: Optional[int] = Query(12, ge=1, le=100, description="Items per page"),
-    direction: Optional[str] = Query("next", pattern="^(next|prev)$", description="Pagination direction"),
-    
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
     current_user: dict = Depends(user_only)
 ):
     try:
         email = current_user["email"]
-        
-        # Use cursor-based pagination
-        cursor_params = CursorPaginationParams(
-            cursor=cursor,
-            page_size=page_size or 12,
-            direction=direction or "next"
-        )
         return get_events_moderated_by_user_paginated(email, cursor_params)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPExceptionHelper.server_error(str(e))
     
 # Fetch + Ingest Ticketmaster events (per city/state)
 @event_router.post("/fetch-ticketmaster-events")
@@ -269,7 +198,7 @@ def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict 
     state = payload.get("state")
 
     if not city or not state:
-        raise HTTPException(status_code=400, detail="City and state are required.")
+        raise HTTPExceptionHelper.bad_request("City and state are required.")
 
     raw_events = fetch_ticketmaster_events(city, state)
     summary = ingest_bulk_events(raw_events)
@@ -305,13 +234,13 @@ async def update_event_organizers(
 ):
     event = get_event_by_id(event_id)
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPExceptionHelper.not_found("Event not found")
 
     new_organizers = payload.get("organizerEmails", [])
     creator_email = event.get("createdByEmail")
 
     if creator_email is None:
-        raise HTTPException(status_code=500, detail="Event creator email is missing.")
+        raise HTTPExceptionHelper.server_error("Event creator email is missing.")
 
     result = set_organizers(event_id, new_organizers, creator_email)
 
@@ -321,7 +250,7 @@ async def update_event_organizers(
             "organizers": result["organizers"],  # Changed from "organizerIds" to "organizers"
             "skipped": result["skipped"]
         }
-    raise HTTPException(status_code=500, detail="Failed to update organizers")
+    raise HTTPExceptionHelper.server_error("Failed to update organizers")
 
 @event_router.patch("/{event_id}/moderators")
 async def update_event_moderators(
@@ -331,7 +260,7 @@ async def update_event_moderators(
 ):
     event = get_event_by_id(event_id)
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPExceptionHelper.not_found("Event not found")
 
     new_moderators = payload.get("moderatorEmails", [])
     result = set_moderators(event_id, new_moderators)
@@ -343,7 +272,7 @@ async def update_event_moderators(
             "skipped": result["skipped"]
         }
 
-    raise HTTPException(status_code=500, detail="Failed to update moderators")
+    raise HTTPExceptionHelper.server_error("Failed to update moderators")
 
 @event_router.post("/ingest/all")
 async def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)):
@@ -361,7 +290,7 @@ async def bulk_archive_past_events(current_user: dict = Depends(admin_only)):
             "archived_count": archived_count
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to archive past events: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to archive past events: {str(e)}")
 
 # ========== RSVP ENDPOINTS ==========
 
@@ -378,19 +307,19 @@ async def rsvp_to_event_endpoint(
         if success:
             return get_rsvp_response_data(event_id, email, "created")
         else:
-            raise HTTPException(status_code=500, detail="Failed to RSVP to event")
+            raise HTTPExceptionHelper.server_error("Failed to RSVP to event")
             
     except ValueError as e:
         # Handle business logic validation errors
         error_msg = str(e)
         if "not found" in error_msg:
-            raise HTTPException(status_code=404, detail=error_msg)
+            raise HTTPExceptionHelper.not_found(error_msg)
         elif "already RSVP'd" in error_msg:
-            raise HTTPException(status_code=409, detail=error_msg)
+            raise HTTPExceptionHelper.conflict(error_msg)
         else:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPExceptionHelper.bad_request(error_msg)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to RSVP to event: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to RSVP to event: {str(e)}")
 
 @event_router.delete("/{event_id}/rsvp")
 async def cancel_rsvp_endpoint(
@@ -405,17 +334,17 @@ async def cancel_rsvp_endpoint(
         if success:
             return get_rsvp_response_data(event_id, email, "cancelled")
         else:
-            raise HTTPException(status_code=500, detail="Failed to cancel RSVP")
+            raise HTTPExceptionHelper.server_error("Failed to cancel RSVP")
             
     except ValueError as e:
         # Handle business logic validation errors
         error_msg = str(e)
         if "not found" in error_msg:
-            raise HTTPException(status_code=404, detail=error_msg)
+            raise HTTPExceptionHelper.not_found(error_msg)
         else:
-            raise HTTPException(status_code=400, detail=error_msg)
+            raise HTTPExceptionHelper.bad_request(error_msg)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to cancel RSVP: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to cancel RSVP: {str(e)}")
 
 @event_router.get("/{event_id}/rsvps")
 async def get_event_rsvps(
@@ -429,7 +358,7 @@ async def get_event_rsvps(
         return get_paginated_rsvp_list(event_id, page, page_size)
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get RSVP list: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to get RSVP list: {str(e)}")
 
 # Export the router for the application
 router = event_router

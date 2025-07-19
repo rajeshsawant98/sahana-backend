@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from app.services.friend_service import friend_service
 from app.models.friend import (
@@ -9,6 +9,7 @@ from app.models.friend import (
     UserSearchResult
 )
 from app.auth.roles import user_only
+from app.utils.http_exceptions import HTTPExceptionHelper
 from typing import List, Dict, Any
 
 friend_router = APIRouter()
@@ -44,10 +45,10 @@ async def send_friend_request(
                 "request_id": result.get("request_id")
             }
         else:
-            raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPExceptionHelper.bad_request(result["error"])
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send friend request: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to send friend request: {str(e)}")
 
 @friend_router.get("/requests")
 async def get_friend_requests(
@@ -59,7 +60,7 @@ async def get_friend_requests(
         return friend_service.format_friend_requests_response(requests)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get friend requests: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to get friend requests: {str(e)}")
 
 @friend_router.post("/accept/{request_id}")
 async def accept_friend_request(
@@ -77,10 +78,10 @@ async def accept_friend_request(
         if result["success"]:
             return {"message": result["message"]}
         else:
-            raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPExceptionHelper.bad_request(result["error"])
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to accept friend request: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to accept friend request: {str(e)}")
 
 @friend_router.post("/reject/{request_id}")
 async def reject_friend_request(
@@ -98,10 +99,10 @@ async def reject_friend_request(
         if result["success"]:
             return {"message": result["message"]}
         else:
-            raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPExceptionHelper.bad_request(result["error"])
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to reject friend request: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to reject friend request: {str(e)}")
 
 @friend_router.delete("/request/{request_id}")
 async def cancel_friend_request(
@@ -118,22 +119,22 @@ async def cancel_friend_request(
         if result["success"]:
             return {"message": result["message"]}
         else:
-            raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPExceptionHelper.bad_request(result["error"])
             
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to cancel friend request: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to cancel friend request: {str(e)}")
 
 @friend_router.get("/list")
 async def get_friends_list(
     current_user: dict = Depends(user_only)
-) -> List[Dict[str, Any]]:
+) -> List[FriendProfile]:
     """Get the list of friends for the current user"""
     try:
         friends = friend_service.get_friends_list(current_user["email"])
-        return friend_service.format_friends_list_response(friends)
+        return friends
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get friends list: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to get friends list: {str(e)}")
 
 @friend_router.get("/search")
 async def search_users(
@@ -152,7 +153,7 @@ async def search_users(
         return friend_service.format_user_search_response(search_results)
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to search users: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to search users: {str(e)}")
 
 # Additional utility endpoint for getting friendship status between two users
 @friend_router.get("/status/{user_id}")
@@ -167,9 +168,7 @@ async def get_friendship_status(
         if result["success"]:
             return {"friendship_status": result["friendship_status"]}
         else:
-            raise HTTPException(status_code=400, detail=result["error"])
+            raise HTTPExceptionHelper.bad_request(result["error"])
         
-    except HTTPException:
-        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get friendship status: {str(e)}")
+        raise HTTPExceptionHelper.server_error(f"Failed to get friendship status: {str(e)}")

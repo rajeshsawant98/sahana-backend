@@ -1,15 +1,14 @@
-from fastapi import APIRouter, HTTPException, Depends, Body, Query
+from fastapi import APIRouter, Depends, Body, Query
 from app.services.user_service import (
     get_all_users,
     get_all_users_paginated
 )
 
-
 from app.auth.jwt_utils import get_current_user
 from app.auth.roles import user_only, admin_only
-from app.auth.event_roles import require_event_creator, require_event_organizer
 from app.models.event import event as EventCreateRequest
 from app.models.pagination import PaginationParams, UserFilters
+from app.utils.http_exceptions import HTTPExceptionHelper
 from typing import Optional
 
 admin_router = APIRouter()
@@ -32,4 +31,4 @@ async def fetch_all_users(
         users = get_all_users()
         if users:
             return {"users": users}
-        raise HTTPException(status_code=404, detail="No users found")   
+        raise HTTPExceptionHelper.not_found("No users found")   

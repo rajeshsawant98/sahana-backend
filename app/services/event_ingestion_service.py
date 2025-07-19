@@ -6,6 +6,7 @@ from app.auth.firebase_init import get_firestore_client
 from app.utils.event_parser import ticketmaster_to_sahana_format
 from app.services.event_scraping_service import get_eventbrite_events
 from app.utils.cache_utils import load_url_cache, save_url_cache
+from app.utils.location_utils import get_unique_user_locations
 
 # Repo is used for all DB operations
 repo = EventIngestionRepository()
@@ -42,20 +43,7 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
 
 # --- Location Utility ---
 
-def get_unique_user_locations() -> list[tuple[str, str]]:
-    db = get_firestore_client()
-    users_ref = db.collection("users")
-    users = users_ref.stream()
-
-    cities = set()
-    for user in users:
-        data = user.to_dict()
-        loc = data.get("location", {})
-        city = loc.get("city")
-        state = loc.get("state")
-        if city and state:
-            cities.add((city.strip(), state.strip()))
-    return list(cities)
+    return {"success": True, "events": len(events)}
 
 # --- Ingestion Logic ---
 
@@ -88,8 +76,6 @@ def ingest_bulk_events(events: list[dict]) -> dict:
     }
 
 async def ingest_events_for_all_cities() -> dict:
-    from app.services.event_ingestion_service import get_unique_user_locations  # keep here to avoid circular import
-
     total_events = 0
     summary = []
     url_cache = load_url_cache()
@@ -126,8 +112,6 @@ async def ingest_events_for_all_cities() -> dict:
     
 
 async def ingest_ticketmaster_events_for_all_cities() -> dict:
-    from app.services.event_ingestion_service import get_unique_user_locations  # keep here to avoid circular import
-
     total_events = 0
     summary = []
 

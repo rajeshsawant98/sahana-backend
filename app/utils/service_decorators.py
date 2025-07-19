@@ -90,18 +90,30 @@ def handle_pagination_errors(func: Callable) -> Callable:
     return wrapper
 
 # Convenience decorators for common return types
-def handle_list_errors(func: Callable) -> Callable:
-    """Returns empty list on error"""
-    return handle_service_errors(default_return=[])(func)
+handle_list_errors = handle_service_errors(default_return=[])
+handle_dict_errors = handle_service_errors(default_return={})
+handle_bool_errors = handle_service_errors(default_return=False)
+handle_none_errors = handle_service_errors(default_return=None)
 
-def handle_dict_errors(func: Callable) -> Callable:
-    """Returns empty dict on error"""
-    return handle_service_errors(default_return={})(func)
-
-def handle_bool_errors(func: Callable) -> Callable:
-    """Returns False on error"""
-    return handle_service_errors(default_return=False)(func)
-
-def handle_none_errors(func: Callable) -> Callable:
-    """Returns None on error"""
-    return handle_service_errors(default_return=None)(func)
+def handle_cursor_pagination_errors(page_size: int = 12):
+    """
+    Specialized decorator for cursor pagination service methods.
+    Returns empty paginated response on error.
+    """
+    def decorator(func: Callable) -> Callable:
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                func_name = func.__name__
+                error_msg = f"Error in {func_name}: {str(e)}"
+                logger.error(error_msg, exc_info=True)
+                
+                # Import here to avoid circular imports
+                from app.models.pagination import EventCursorPaginatedResponse
+                return EventCursorPaginatedResponse.create(
+                    [], None, None, False, False, page_size
+                )
+        return wrapper
+    return decorator
