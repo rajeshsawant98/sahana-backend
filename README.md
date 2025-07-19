@@ -1,6 +1,6 @@
 # Sahana Backend
 
-The backend for **Sahana**, a social meetup and event discovery platform. Built using **FastAPI**, connected to **Firebase** for authentication and Firestore as the primary database. This backend supports features such as event creation, RSVP system, user profiles, authentication, and location services.
+The backend for **Sahana**, a comprehensive social meetup and event discovery platform. Built using **FastAPI**, connected to **Firebase** for authentication and Firestore as the primary database. This backend supports advanced features including event creation, social friend system, RSVP management, cursor-based pagination, automated event ingestion, user profiles, authentication, and location services.
 
 ---
 
@@ -13,6 +13,8 @@ The backend for **Sahana**, a social meetup and event discovery platform. Built 
 - **Uvicorn** (ASGI server)
 - **Docker** (containerized deployment)
 - **GitHub Actions** (CI/CD)
+- **Playwright** (web scraping for event ingestion)
+- **External APIs** (Ticketmaster, Eventbrite)
 
 ---
 
@@ -90,8 +92,9 @@ Comprehensive documentation is available in the [`docs/`](docs/) folder:
 - **[Quick Start](docs/setup/quick-start.md)** - Get up and running quickly
 - **[Authentication](docs/api/authentication.md)** - Auth system documentation
 - **[Events API](docs/api/events.md)** - Event management endpoints
+- **[Friends System](docs/api/FRIENDS_README.md)** - Complete friend system guide
 - **[RSVP System](docs/api/rsvp.md)** - RSVP functionality
-- **[Pagination](docs/api/pagination.md)** - Pagination usage guide
+- **[Pagination](docs/api/pagination.md)** - Cursor-based pagination guide
 - **[Docker Deployment](docs/deployment/docker.md)** - Containerized deployment
 
 For interactive API exploration, visit: `http://localhost:8000/docs`
@@ -114,9 +117,16 @@ The data access layer uses a **specialized repository pattern** for optimal main
 - **EventUserRepository**: User-specific event queries
 - **EventRepositoryManager**: Facade providing unified interface
 
+### Friend System Architecture
+
+- **FriendRequestService**: Friend request management
+- **FriendManagementService**: Existing friendship operations
+- **UserDiscoveryService**: User search and discovery
+- **FriendService**: Unified facade for all friend operations
+
 ### Layer Architecture
 
-```
+```text
 Routes (Controllers) → Services (Business Logic) → Repositories (Data Access) → Database
 ```
 
@@ -137,73 +147,40 @@ Routes (Controllers) → Services (Business Logic) → Repositories (Data Access
 
 ## 📦 Project Structure
 
-```
+```text
 sahana-backend/
 ├── .github/workflows/
 │   └── deploy.yml              # CI/CD GitHub Actions workflow
 ├── app/
-│   ├── auth/                   # Google SSO, JWT, login utilities
-│   ├── db/                     # Firestore access layer
+│   ├── auth/                   # Authentication (Google SSO, JWT, roles)
 │   ├── models/                 # Pydantic models for request/response
-│   ├── routes/                 # API routes: auth, events, rsvp, etc.
-│   ├── services/               # Business logic (e.g. RSVP handlers)
-│   ├── repositories/           # Firestore data access layer (Repository pattern)
+│   ├── routes/                 # API routes (auth, events, friends, etc.)
+│   ├── services/               # Business logic layer
+│   │   ├── friend_service.py           # Unified friend system facade
+│   │   ├── friend_request_service.py   # Friend request management
+│   │   ├── friend_management_service.py # Friend list & status management
+│   │   ├── user_discovery_service.py   # User search functionality
+│   │   ├── event_service.py            # Event business logic
+│   │   └── user_service.py             # User management
+│   ├── repositories/           # Data access layer (Repository pattern)
+│   │   ├── events/             # Event-related repositories
+│   │   ├── friends/            # Friend system repositories
+│   │   └── users/              # User repositories
+│   ├── scrapers/               # Web scraping for external events
 │   ├── utils/                  # Utility functions and helpers
 │   ├── test/                   # Unit/integration tests
-│   ├── __init__.py
-│   ├── config.py               # Env config handling
-│   ├── db.py                   # Firebase client / DB init
+│   ├── config.py               # Environment configuration
 │   └── main.py                 # FastAPI app entrypoint
-├── .env                        # Environment variables
-├── .gitignore
+├── docs/                       # Comprehensive documentation
+│   ├── api/                    # API documentation
+│   ├── architecture/           # Architecture guides
+│   ├── deployment/             # Deployment guides
+│   ├── frontend/               # Frontend integration guides
+│   └── setup/                  # Setup and configuration
 ├── Dockerfile                  # Docker container setup
-├── firebase_cred.json          # Firebase admin SDK credentials
-├── README.md                   # Project documentation
-└── requirements.txt            # Python dependencies
+├── requirements.txt            # Python dependencies
+└── README.md                   # This file
 ```
-
----
-
-## 📦 Dependencies (requirements.txt)
-
-### Web & API
-
-- `fastapi`
-- `uvicorn`
-- `pydantic`
-- `requests`
-- `beautifulsoup4`
-
-### Authentication & Security
-
-- `authlib`
-- `google-auth`
-- `python-jose`
-- `passlib`
-- `bcrypt`
-
-### Firebase & Cloud
-
-- `firebase-admin`
-- `google-cloud-secret-manager`
-
-### Configuration & Storage
-
-- `python-dotenv`
-- `sqlalchemy`
-- `databases`
-
-### AI Integration (Optional)
-
-- `openai`
-
----
-
-## 🔐 Authentication
-
-- Supports **Google SSO** and **email/password** login
-- JWT token-based authentication
-- Access token stored in Redux, refresh token stored in HttpOnly cookie or localStorage
 
 ---
 
@@ -213,45 +190,108 @@ sahana-backend/
 
 - Signup, login (Google/email)
 - Profile update (name, bio, contact info, location)
+- User discovery and search functionality
 
 ### ✅ Event Management
 
 - Create/update events (online/offline, time, location)
-- Firestore stores each event document
+- Advanced cursor-based pagination for optimal performance
+- Event archiving and soft-delete functionality
+- Automated event ingestion from external sources (Ticketmaster, Eventbrite)
+- Event roles: creator, organizer, moderator support
+
+### ✅ Friend System 🤝
+
+- **Send Friend Requests** - Search and send requests to other users
+- **Accept/Reject Requests** - Manage incoming friend requests
+- **Cancel Sent Requests** - Cancel outgoing pending requests
+- **Friends List** - View all current friends with rich profiles
+- **User Search** - Find users with real-time friendship status
+- **Smart Search Integration** - Enhanced event discovery with friend networks
+- **Friendship Status Tracking** - Real-time status between any two users
 
 ### ✅ RSVP System
 
 - Join an event (adds to rsvpList)
 - Cancel RSVP (removes user from list)
-- Fetch RSVP’d events for user
+- Fetch RSVP'd events for user
+- Enhanced RSVP management with friend visibility
+- RSVP statistics and analytics
 
 ### ✅ Event Discovery
 
-- Filter by category, location
+- Filter by category, location, date ranges
+- Cursor-based pagination for large datasets
 - See event metadata (time, tags, RSVP status)
+- Nearby events discovery
+- External events integration
+- Friend-based event recommendations
 
 ### ✅ Location Services
 
 - Auto-detect or manually set user location
 - Event cards and detail pages use this for relevance
+- Location-based event recommendations
+- Multi-city event ingestion support
 
-### ✅ Event Detail API
+### ✅ Advanced Pagination
 
-- Full event detail by ID
-- RSVP status included for logged-in user
+- **Cursor-based pagination** for high-performance data access
+- **Legacy offset-based pagination** for backward compatibility
+- Intelligent filtering with automatic index selection
+- Real-time safe pagination that handles concurrent modifications
+
+### ✅ Event Ingestion & External APIs
+
+- **Ticketmaster Integration** - Automated event fetching and ingestion
+- **Eventbrite Integration** - Async web scraping for event data
+- **Daily Automated Ingestion** - Background event updates
+- **Multi-source Event Aggregation** - Unified event discovery
+- **Deduplication & Caching** - Efficient URL caching and event deduplication
 
 ---
 
 ## 📬 API Endpoints (Selected)
 
+### Authentication
+
 - `POST /auth/login` — login with email/password
 - `POST /auth/google` — login via Google SSO
-- `GET /events/` — get all public events
+
+### Events
+
+- `GET /events/` — get all public events (cursor pagination)
+- `POST /events/new` — create a new event
+- `GET /events/{id}` — get event detail by ID
 - `POST /events/{id}/rsvp` — RSVP to an event
-- `DELETE /events/{id}/rsvp` — Cancel RSVP
-- `GET /events/me/rsvped` — Events the user RSVP’d to
-- `GET /events/me/created` — Events created by user
-- `GET /events/{id}` — Get event detail by ID
+- `DELETE /events/{id}/rsvp` — cancel RSVP
+- `GET /events/me/created` — events created by user
+- `GET /events/me/rsvped` — events the user RSVP'd to
+- `GET /events/me/organized` — events organized by user
+- `GET /events/me/moderated` — events moderated by user
+- `PATCH /events/{id}/archive` — archive an event (soft delete)
+
+### Location-Based Events
+
+- `GET /events/location/nearby` — nearby events by city/state
+- `GET /events/location/external` — external events (Ticketmaster/Eventbrite)
+
+### Friend System 🤝
+
+- `POST /friends/request` — send friend request
+- `GET /friends/requests` — get friend requests (sent & received)
+- `POST /friends/accept/{id}` — accept friend request
+- `POST /friends/reject/{id}` — reject friend request
+- `DELETE /friends/request/{id}` — cancel sent friend request
+- `GET /friends/list` — get friends list
+- `GET /friends/search` — search users to befriend
+- `GET /friends/status/{user_id}` — get friendship status
+
+### Admin & Ingestion
+
+- `POST /events/fetch-ticketmaster-events` — fetch Ticketmaster events (admin)
+- `POST /events/ingest/all` — ingest events for all cities (admin)
+- `GET /admin/users` — get all users (admin)
 
 ---
 
@@ -277,17 +317,83 @@ Make sure to mount or copy your `firebase_cred.json` if needed.
 
 ## 🧪 Testing
 
-Tests are located in the `app/test/` directory.
-Run them using `pytest` (support coming soon).
+Tests are located in the `app/test/` directory:
+
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Full API endpoint testing  
+- **Friend System Tests**: Comprehensive friend functionality testing
+- **Pagination Tests**: Cursor pagination validation
+
+Run tests using:
+
+```bash
+pytest app/test/
+```
+
+---
+
+## 📊 Recent Major Updates
+
+### Friend System Implementation (July 2025)
+
+- Complete social networking functionality
+- Real-time friendship status tracking
+- User search and discovery
+- Integration with event system
+
+### Advanced Pagination System (June 2025)
+
+- Cursor-based pagination for high performance
+- Backward compatibility with offset pagination
+- Optimized Firestore queries with proper indexing
+
+### Event Ingestion Pipeline (June 2025)
+
+- Automated Ticketmaster API integration
+- Async Eventbrite web scraping
+- Multi-source event aggregation
+- Daily automated ingestion workflows
+
+### Repository Architecture Refactoring (June 2025)
+
+- Modular repository pattern implementation
+- Specialized repositories for different concerns
+- Improved maintainability and testability
 
 ---
 
 ## ✨ Upcoming Features
 
-- Role-based permissions (event creator vs attendee)
-- Real-time RSVP count updates
-- Notification system (email reminders, RSVP updates)
-- Attendee visibility and profiles
+### Phase 1: Enhanced Social Features
+
+- Real-time notifications for friend requests
+- Mutual friends display and discovery
+- Friend activity feeds
+- Event attendance by friends visibility
+
+### Phase 2: Advanced Event Features
+
+- Event categories and tagging system
+- Advanced filtering and search
+- Event recommendations based on interests
+- Event series and recurring events
+
+### Phase 3: Platform Enhancements
+
+- WebSocket integration for real-time updates
+- Mobile push notifications
+- Analytics dashboard
+- Event promotion tools
+
+---
+
+## 📞 Support & Contributing
+
+- **Documentation**: See [`docs/`](docs/) for detailed guides
+- **Issues**: Report bugs via GitHub Issues
+- **API Testing**: Use the interactive docs at `/docs`
+- **Architecture**: Review the [Architecture Guide](docs/architecture/README.md)
+- **Friend System**: See [Friend System Documentation](docs/api/FRIENDS_README.md)
 
 ---
 
