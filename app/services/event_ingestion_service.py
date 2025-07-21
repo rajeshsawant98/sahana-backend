@@ -39,11 +39,11 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
     if "_embedded" not in data:
         return []
 
-    return [ticketmaster_to_sahana_format(ev) for ev in data["_embedded"]["events"]]
+    # Only include events with a valid startTime
+    formatted = [ticketmaster_to_sahana_format(ev) for ev in data["_embedded"]["events"]]
+    filtered = [ev for ev in formatted if ev.get("startTime")]
+    return filtered
 
-# --- Location Utility ---
-
-    return {"success": True, "events": len(events)}
 
 # --- Ingestion Logic ---
 

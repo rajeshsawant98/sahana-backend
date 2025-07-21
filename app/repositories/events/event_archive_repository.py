@@ -86,7 +86,12 @@ class EventArchiveRepository(BaseRepository):
                         events.append(event_data)
             
             # Sort by archived date in Python (most recent first)
-            events.sort(key=lambda x: x.get("archivedAt", ""), reverse=True)
+            # Sort by archived date in Python (most recent first), normalizing to string for comparison
+            def normalize_archived_at(val):
+                if hasattr(val, 'isoformat'):
+                    return val.isoformat()
+                return str(val) if val is not None else ""
+            events.sort(key=lambda x: normalize_archived_at(x.get("archivedAt")), reverse=True)
             
             return events
         except Exception as e:
