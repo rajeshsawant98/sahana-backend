@@ -81,17 +81,15 @@ class EventQueryRepository(BaseRepository):
     def get_events_for_archiving(self) -> List[Dict[str, Any]]:
         """Get events that should be archived (ended events)"""
         try:
-            # Calculate cutoff time (events that ended more than 1 day ago)
-            cutoff_time = datetime.now() - timedelta(days=1)
-            
-            # Use single filter approach - filter by end time only
-            query = self.collection.where("endTime", "<", cutoff_time)
-            
+            # Fetch all non-archived events (let service filter which are past)
+            query = self.collection.where("isArchived", "!=", True)
             docs = query.stream()
             events = []
             for doc in docs:
                 event_data = doc.to_dict()
-                if event_data is not None and event_data.get("isArchived") != True:
+                if event_data is not None:
+                    event_data["eventId"] = doc.id
+                    event_data["documentId"] = doc.id
                     events.append(event_data)
             return events
         except Exception as e:
