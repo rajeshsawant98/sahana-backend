@@ -78,7 +78,13 @@ def ticketmaster_to_sahana_format(event: Dict) -> Dict:
 def safe_get_name(value):
     return value.get("name") if isinstance(value, dict) else str(value or "")
 
-def parse_eventbrite_data(server_data: dict) -> dict:
+from typing import Optional
+
+def parse_eventbrite_data(server_data: dict) -> Optional[dict]:
+    """
+    Parses Eventbrite server_data into Sahana event format.
+    Returns None if event is missing start date or has abnormal duration (> 20160 min).
+    """
 
 
     event = server_data.get("event", {})
@@ -140,21 +146,28 @@ def parse_eventbrite_data(server_data: dict) -> dict:
 
     categories = list(filter(None, [format_name, category_name, subcategory_name]))
 
+    start_utc = event.get("start", {}).get("utc")
+    end_utc = event.get("end", {}).get("utc")
+    if not start_utc:
+        return None  # Skip events without a start date
+    if start_utc and end_utc:
+        try:
+            start_dt = datetime.fromisoformat(start_utc)
+            end_dt = datetime.fromisoformat(end_utc)
+            duration = int((end_dt - start_dt).total_seconds() // 60)
+        except Exception:
+            duration = 120
+    else:
+        duration = 120
+    if duration <= 0 or duration > 20160:
+        return None  # Skip events with abnormal duration
+
     return {
         "eventId": event.get("id") or str(uuid4()),
         "eventName": event.get("name", "Untitled Event").strip(),
         "location": location,
-        "startTime": event.get("start", {}).get("utc"),
-        "duration": (
-            int(
-                (
-                    datetime.fromisoformat(event.get("end", {}).get("utc", datetime.now(timezone.utc).isoformat()))
-                    - datetime.fromisoformat(event.get("start", {}).get("utc", datetime.now(timezone.utc).isoformat()))
-                ).total_seconds() // 60
-            )
-            if event.get("start", {}).get("utc") and event.get("end", {}).get("utc")
-            else 120
-        ),
+        "startTime": start_utc,
+        "duration": duration,
         "categories": categories,
         "isOnline": event.get("isOnlineEvent", False),
         "joinLink": join_link,

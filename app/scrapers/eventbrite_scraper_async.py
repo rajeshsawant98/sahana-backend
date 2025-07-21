@@ -33,8 +33,12 @@ async def fetch_event_detail(context, href, seen_links):
 
             if isinstance(server_data, dict):
                 event = parse_eventbrite_data(server_data)
-                seen_links.add(href)
-                return event
+                if event:
+                    seen_links.add(href)
+                    return event
+                else:
+                    print(f"[SKIP] Event at {href} was filtered out (missing start date or abnormal duration)")
+                    return None
 
             print(f"[ERROR] Invalid server_data at {href} — type={type(server_data)}")
 
