@@ -1,6 +1,7 @@
 from ..base_repository import BaseRepository
 from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
+from datetime import datetime
 from typing import Tuple, List, Dict, Any, Optional
 
 class EventUserRepository(BaseRepository):
@@ -84,8 +85,11 @@ class EventUserRepository(BaseRepository):
             next_cursor = None
             if has_next_page and events:
                 last_event = events[-1]
+                start_time = last_event.get('startTime')
+                if isinstance(start_time, datetime):
+                    start_time = start_time.isoformat()
                 cursor_info = CursorInfo(
-                    start_time=last_event.get('startTime'),
+                    start_time=start_time,
                     event_id=last_event.get('eventId')
                 )
                 next_cursor = cursor_info.encode()
@@ -149,8 +153,11 @@ class EventUserRepository(BaseRepository):
             next_cursor = None
             if has_next_page and events:
                 last_event = events[-1]
+                start_time = last_event.get('startTime')
+                if isinstance(start_time, datetime):
+                    start_time = start_time.isoformat()
                 cursor_info = CursorInfo(
-                    start_time=last_event.get('startTime'),
+                    start_time=start_time,
                     event_id=last_event.get('eventId')
                 )
                 next_cursor = cursor_info.encode()
@@ -213,8 +220,11 @@ class EventUserRepository(BaseRepository):
             next_cursor = None
             if has_next_page and events:
                 last_event = events[-1]
+                start_time = last_event.get('startTime')
+                if isinstance(start_time, datetime):
+                    start_time = start_time.isoformat()
                 cursor_info = CursorInfo(
-                    start_time=last_event.get('startTime'),
+                    start_time=start_time,
                     event_id=last_event.get('eventId')
                 )
                 next_cursor = cursor_info.encode()

@@ -200,16 +200,21 @@ class EventQueryRepository(BaseRepository):
             if events:
                 first_event = events[0]
                 last_event = events[-1]
-                
+
+                def ensure_str_time(val):
+                    if isinstance(val, datetime):
+                        return val.isoformat()
+                    return val
+
                 if has_next:
                     next_cursor = CursorInfo(
-                        start_time=last_event["startTime"],
+                        start_time=ensure_str_time(last_event["startTime"]),
                         event_id=last_event["eventId"]
                     ).encode()
-                
+
                 if has_previous:
                     prev_cursor = CursorInfo(
-                        start_time=first_event["startTime"], 
+                        start_time=ensure_str_time(first_event["startTime"]),
                         event_id=first_event["eventId"]
                     ).encode()
             
@@ -365,16 +370,21 @@ class EventQueryRepository(BaseRepository):
             if events:
                 first_event = events[0]
                 last_event = events[-1]
-                
+
+                def ensure_str_time(val):
+                    if isinstance(val, datetime):
+                        return val.isoformat()
+                    return val
+
                 if has_next:
                     next_cursor = CursorInfo(
-                        start_time=last_event["startTime"],
+                        start_time=ensure_str_time(last_event["startTime"]),
                         event_id=last_event["eventId"]
                     ).encode()
-                
+
                 if has_previous:
                     prev_cursor = CursorInfo(
-                        start_time=first_event["startTime"], 
+                        start_time=ensure_str_time(first_event["startTime"]),
                         event_id=first_event["eventId"]
                     ).encode()
             
@@ -444,16 +454,21 @@ class EventQueryRepository(BaseRepository):
             if events:
                 first_event = events[0]
                 last_event = events[-1]
-                
+
+                def ensure_str_time(val):
+                    if isinstance(val, datetime):
+                        return val.isoformat()
+                    return val
+
                 if has_next:
                     next_cursor = CursorInfo(
-                        start_time=last_event["startTime"],
+                        start_time=ensure_str_time(last_event["startTime"]),
                         event_id=last_event["eventId"]
                     ).encode()
-                
+
                 if has_previous:
                     prev_cursor = CursorInfo(
-                        start_time=first_event["startTime"], 
+                        start_time=ensure_str_time(first_event["startTime"]),
                         event_id=first_event["eventId"]
                     ).encode()
             

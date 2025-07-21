@@ -155,8 +155,11 @@ class EventArchiveRepository(BaseRepository):
             next_cursor = None
             if has_next_page and events:
                 last_event = events[-1]
+                archived_at = last_event.get('archivedAt')
+                if isinstance(archived_at, datetime):
+                    archived_at = archived_at.isoformat()
                 cursor_info = CursorInfo(
-                    start_time=last_event.get('archivedAt'),  # Use archivedAt for cursor
+                    start_time=archived_at,  # Use archivedAt for cursor
                     event_id=last_event.get('eventId')
                 )
                 next_cursor = cursor_info.encode()
