@@ -20,7 +20,8 @@ from app.services.event_service import (
     get_rsvp_list,
     get_rsvp_response_data,
     get_paginated_rsvp_list,
-    archive_event_with_validation
+    archive_event_with_validation,
+    get_all_events
 )
 
 from app.services.event_ingestion_service import (
@@ -49,6 +50,7 @@ async def create_new_event(event: EventCreateRequest , current_user: dict = Depe
         return {"message": "Event created successfully", "eventId": result["eventId"]}
     raise operation_failed("create event")
 
+
 # Get all events (cursor pagination by default)
 @event_router.get("")
 async def fetch_all_events(
@@ -57,6 +59,12 @@ async def fetch_all_events(
 ):
     filters = EventFilters(**filter_params)
     return get_all_events_paginated(cursor_params, filters)
+
+# Get all events (non-paginated, for admin/analytics use)
+@event_router.get("/all")
+async def fetch_all_events_non_paginated(current_user: dict = Depends(admin_only)):
+    """Return all non-archived events (non-paginated, admin only)"""
+    return get_all_events()
 
 # Get archived events (creator only) with cursor pagination
 @event_router.get("/me/archived")

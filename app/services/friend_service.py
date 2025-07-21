@@ -87,7 +87,7 @@ class FriendService:
             return {"received": [], "sent": []}
 
     def format_friends_list_response(self, friends: List[FriendProfile]) -> List[Dict[str, Any]]:
-        """Format friends list for API response - centralized transformation"""
+        """Format friends list for API response - centralized transformation (no events_created/events_attended)"""
         try:
             friends_dicts = []
             for friend in friends:
@@ -99,8 +99,6 @@ class FriendService:
                     "profile_picture": friend.profile_picture,
                     "location": friend.location,
                     "interests": friend.interests,
-                    "events_created": friend.events_created,
-                    "events_attended": friend.events_attended,
                     "created_at": friend.created_at.isoformat() if friend.created_at else None
                 })
             return friends_dicts

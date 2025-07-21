@@ -24,8 +24,6 @@ class FriendProfile(BaseModel):
     profile_picture: Optional[str] = None
     location: Optional[dict] = None
     interests: Optional[list] = None
-    events_created: Optional[int] = 0
-    events_attended: Optional[int] = 0
     created_at: Optional[datetime] = None
 
 class FriendRequestWithProfile(BaseModel):

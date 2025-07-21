@@ -13,16 +13,16 @@ class FriendManagementService:
         self.logger = get_service_logger(__name__)
 
     def get_friends_list(self, user_email: str) -> List[FriendProfile]:
-        """Get the list of friends for a user"""
+        """Get the list of friends for a user (without events_created/events_attended for efficiency)"""
         try:
             # Validate user exists
             user = self.user_repo.get_by_email(user_email)
             if not user:
                 return []
-            
+
             # Get friend IDs from accepted friend requests
             friend_ids = self.friend_repo.get_accepted_friendship_ids(user_email)
-            
+
             friends = []
             for friend_id in friend_ids:
                 # Get user details for each friend
@@ -39,9 +39,9 @@ class FriendManagementService:
                         created_at=friend_user.get("created_at")
                     )
                     friends.append(friend_profile)
-            
+
             return friends
-            
+
         except Exception as e:
             context = {
                 'method': 'get_friends_list',
