@@ -14,9 +14,9 @@ firebase_cred.json
 app/cache/*
 !app/cache/.gitkeep
 
+
 # Data
-eventbrite_events.json
-eventbrite_data.json
+data/
 
 # Logs
 *.log
