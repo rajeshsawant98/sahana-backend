@@ -1,7 +1,17 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from typing import List
 from google.oauth2 import id_token
 from google.auth.transport.requests import Request
+from app.models import (
+    UserCreate, 
+    UserUpdate, 
+    UserResponse, 
+    UserLoginRequest, 
+    UserLoginResponse,
+    GoogleUserCreate,
+    Location
+)
 from app.services.user_service import (
     store_or_update_user_data,
     store_user_with_password,
@@ -21,30 +31,10 @@ import os
 
 auth_router = APIRouter()
 
-# -------------------- Models --------------------
+# -------------------- Request Models --------------------
 
 class GoogleLoginRequest(BaseModel):
     token: str
-
-class NormalLoginRequest(BaseModel):
-    email: str
-    password: str
-
-class RegisterRequest(BaseModel):
-    email: str
-    password: str
-    name: str
-
-class UpdateProfileRequest(BaseModel):
-    name: str
-    profession: str
-    bio: str
-    phoneNumber: str
-    location: dict
-    birthdate: str
-
-class UpdateInterestsRequest(BaseModel):
-    interests: list
 
 class RefreshRequest(BaseModel):
     refresh_token: str
@@ -88,8 +78,8 @@ async def google_login(request: GoogleLoginRequest):
         raise HTTPExceptionHelper.bad_request("Google login failed")
 
 # Normal Login
-@auth_router.post("/login")
-async def normal_login(request: NormalLoginRequest):
+@auth_router.post("/login", response_model=UserLoginResponse)
+async def normal_login(request: UserLoginRequest):
     user = get_user_by_email(request.email)
     if not user or not verify_user_password(request.email, request.password):
         raise HTTPExceptionHelper.bad_request("Invalid credentials") 
@@ -97,31 +87,40 @@ async def normal_login(request: NormalLoginRequest):
     access_token = create_access_token(data={"email": user["email"], "role": user.get("role", "user")})
     refresh_token = create_refresh_token(data={"email": user["email"], "role": user.get("role", "user")})
 
-    return {
-        "message": "User authenticated successfully",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",
-        "email": user["email"],
-    }
+    return UserLoginResponse(
+        message="User authenticated successfully",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        email=user.get("email", "")
+    )
 
 # Register
-@auth_router.post("/register")
-async def register_user(request: RegisterRequest):
+@auth_router.post("/register", response_model=UserLoginResponse)
+async def register_user(request: UserCreate):
     if get_user_by_email(request.email):
         raise HTTPExceptionHelper.bad_request("Email already exists")
 
     store_user_with_password(request.email, request.password, request.name)
 
+    # Get the newly created user
+    user = get_user_by_email(request.email)
+    if not user:
+        raise HTTPExceptionHelper.server_error("Failed to create user")
+
     access_token = create_access_token(data={"email": request.email, "role": "user"})
     refresh_token = create_refresh_token(data={"email": request.email, "role": "user"})
 
-    return {
-        "message": "User registered successfully",
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer",    
-    }
+    # Remove password for security before extracting data
+    user.pop("password", None)
+
+    return UserLoginResponse(
+        message="User registered successfully",
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer",
+        email=request.email
+    )
 
 # Refresh Token
 @auth_router.post("/refresh")
@@ -149,55 +148,85 @@ async def refresh_token(request: RefreshRequest):
             "message": "Access token refreshed successfully"}
 
 # Get current user profile
-@auth_router.get("/me")
+@auth_router.get("/me", response_model=UserResponse)
 async def get_profile(current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
+    # Remove password from user data
     user.pop("password", None)
-
-    return {
-        "email": user["email"],
-        "name": user["name"],
-        "profile_picture": user.get("profile_picture", ""),
-        "interests": user.get("interests", []),
-        "profession": user.get("profession", ""),
-        "bio": user.get("bio", ""),
-        "phoneNumber": user.get("phoneNumber", ""),
-        "location": user.get("location", {}),
-        "birthdate": user.get("birthdate", ""),
-        "role": user.get("role", "user")
-    }
+    
+    # Convert to UserResponse model
+    try:
+        return UserResponse(**user)
+    except Exception as e:
+        # If there are missing fields, provide defaults
+        return UserResponse(
+            name=user.get("name", ""),
+            email=user["email"],
+            phoneNumber=user.get("phoneNumber", ""),
+            bio=user.get("bio", ""),
+            birthdate=user.get("birthdate", ""),
+            profession=user.get("profession", ""),
+            interests=user.get("interests", []),
+            role=user.get("role", "user"),
+            profile_picture=user.get("profile_picture", ""),
+            location=user.get("location"),
+            google_uid=user.get("google_uid"),
+            created_at=user.get("created_at"),
+            updated_at=user.get("updated_at")
+        )
 
 # Update user profile
-@auth_router.put("/me")
-async def update_profile(request: UpdateProfileRequest, current_user: dict = Depends(user_only)):
+@auth_router.put("/me", response_model=dict)
+async def update_profile(request: UserUpdate, current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
-    updated_data = {
-        "name": request.name,
-        "profession": request.profession,
-        "bio": request.bio,
-        "phoneNumber": request.phoneNumber,
-        "birthdate": request.birthdate,
-        "location": {
-            **(user.get("location") or {}),
-            **request.location
-        }
-    }
+    # Convert UserUpdate model to dict, excluding None values
+    update_data = {}
+    for field, value in request.dict(exclude_none=True).items():
+        if field == "location" and value:
+            # Merge location data with existing location
+            existing_location = user.get("location") or {}
+            if hasattr(value, 'dict'):
+                new_location = value.dict()
+            else:
+                new_location = value
+            update_data["location"] = {**existing_location, **new_location}
+        else:
+            update_data[field] = value
 
-    update_user_data(updated_data, current_user["email"])
+    update_user_data(update_data, current_user["email"])
     return {"message": "Profile updated successfully"}
 
 # Update user interests
-@auth_router.put("/me/interests")
+class UpdateInterestsRequest(BaseModel):
+    interests: List[str]
+
+@auth_router.put("/me/interests", response_model=dict)
 async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(user_only)):
     user = get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
-    update_user_data({"interests": request.interests}, current_user["email"])
-    return {"message": "User interests updated successfully"}
+    # Validate interests using the validator from UserUpdate
+    try:
+        # Basic validation - ensure it's a list of strings
+        if not isinstance(request.interests, list):
+            raise ValueError("Interests must be a list")
+        
+        # Validate each interest is a non-empty string
+        for interest in request.interests:
+            if not isinstance(interest, str) or not interest.strip():
+                raise ValueError("Each interest must be a non-empty string")
+        
+        # Remove duplicates and trim whitespace
+        cleaned_interests = list(set(interest.strip() for interest in request.interests))
+        
+        update_user_data({"interests": cleaned_interests}, current_user["email"])
+        return {"message": "User interests updated successfully"}
+    except ValueError as e:
+        raise HTTPExceptionHelper.bad_request(f"Invalid interests: {str(e)}")

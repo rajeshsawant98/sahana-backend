@@ -1,5 +1,20 @@
 from .event import event
-from .user import User
+from .user import (
+    User, 
+    UserCreate, 
+    UserUpdate, 
+    UserResponse, 
+    UserProfile, 
+    UserSearchResult, 
+    GoogleUserCreate, 
+    UserLoginRequest, 
+    UserLoginResponse,
+    UserLoginResponseLegacy, 
+    PaginatedUsersResponse, 
+    UserStatsResponse,
+    Location,
+    UserRole
+)
 from .friend import (
     FriendRequest,
     FriendRequestCreate,
@@ -20,12 +35,23 @@ from .pagination import (
 __all__ = [
     "event",
     "User", 
+    "UserCreate", 
+    "UserUpdate", 
+    "UserResponse", 
+    "UserProfile", 
+    "UserSearchResult", 
+    "GoogleUserCreate", 
+    "UserLoginRequest", 
+    "UserLoginResponse", 
+    "PaginatedUsersResponse", 
+    "UserStatsResponse",
+    "Location",
+    "UserRole",
     "FriendRequest",
     "FriendRequestCreate", 
     "FriendRequestResponse",
     "FriendProfile",
     "FriendRequestWithProfile",
-    "UserSearchResult",
     "PaginationParams",
     "PaginatedResponse",
     "EventPaginatedResponse",
