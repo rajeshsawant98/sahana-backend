@@ -68,7 +68,8 @@ class EventValidator:
             ValueError: If user has not RSVP'd
         """
         rsvp_list = event.get("rsvpList", [])
-        if email not in rsvp_list:
+        found = any(rsvp.get("email") == email for rsvp in rsvp_list if isinstance(rsvp, dict))
+        if not found:
             raise ValueError("You have not RSVP'd to this event")
     
     @staticmethod

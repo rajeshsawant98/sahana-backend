@@ -2,6 +2,14 @@ from pydantic import BaseModel , Field
 from typing import List, Optional
 from datetime import datetime
 
+
+# RSVP object for event participants
+class EventRsvp(BaseModel):
+    email: str
+    status: str  # "interested", "joined", "attended", "no_show"
+    rating: Optional[int] = None  # Only if status == "attended"
+    review: Optional[str] = None
+
 class event(BaseModel):
     eventName: str
     location: dict
@@ -20,3 +28,5 @@ class event(BaseModel):
     archivedAt: Optional[str] = None
     archivedBy: Optional[str] = None
     archiveReason: Optional[str] = None
+    # RSVP list as array of objects
+    rsvpList: Optional[List[EventRsvp]] = None

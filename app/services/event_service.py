@@ -1,10 +1,14 @@
 from app.repositories.events import EventRepositoryManager
+from app.services.event_rsvp_service import EventRsvpService
 from app.services.user_service import validate_user_emails
 from app.models.pagination import EventFilters, CursorPaginationParams, EventCursorPaginatedResponse
 from app.utils.logger import get_service_logger
 from app.utils.event_validators import EventValidator
 from typing import Optional
 from datetime import datetime, timedelta
+
+
+event_rsvp_service = EventRsvpService()
 
 event_repo = EventRepositoryManager()
 logger = get_service_logger(__name__)
@@ -53,43 +57,21 @@ def get_my_events(email: str):
 
 def rsvp_to_event(event_id: str, email: str):
     try:
-        # Get and validate event
-        event = event_repo.get_event_by_id(event_id)
-        event = EventValidator.validate_event_exists(event)
-        
-        # Validate RSVP preconditions
-        EventValidator.validate_rsvp_preconditions(event, email)
-        
-        # Perform RSVP
-        return event_repo.rsvp_to_event(event_id, email)
-    except ValueError:
-        # Re-raise validation errors
-        raise
+        return event_rsvp_service.join_event(event_id, email)
     except Exception as e:
         logger.error(f"Error in rsvp_to_event: {e}", exc_info=True)
         return False
 
 def cancel_user_rsvp(event_id: str, email: str):
     try:
-        # Get and validate event
-        event = event_repo.get_event_by_id(event_id)
-        event = EventValidator.validate_event_exists(event)
-        
-        # Validate cancellation preconditions
-        EventValidator.validate_cancel_rsvp_preconditions(event, email)
-        
-        # Cancel RSVP
-        return event_repo.cancel_rsvp(event_id, email)
-    except ValueError:
-        # Re-raise validation errors
-        raise
+        return event_rsvp_service.cancel_joined_rsvp(event_id, email)
     except Exception as e:
         logger.error(f"Error in cancel_user_rsvp: {e}", exc_info=True)
         raise Exception(f"Error cancelling RSVP: {e}")
 
 def get_user_rsvps(email: str):
     try:
-        return event_repo.get_user_rsvps(email)
+        return event_rsvp_service.get_user_rsvps(email)
     except Exception as e:
         logger.error(f"Error in get_user_rsvps: {e}", exc_info=True)
         return []
@@ -103,7 +85,7 @@ def get_events_organized_by_user(email: str):
 
 def get_rsvp_list(event_id: str):
     try:
-        return event_repo.get_rsvp_list(event_id)
+        return event_rsvp_service.get_rsvp_list(event_id)
     except Exception as e:
         logger.error(f"Error in get_rsvp_list: {e}", exc_info=True)
         return []
@@ -256,9 +238,14 @@ def get_my_events_paginated(email: str, cursor_params: CursorPaginationParams) -
 def get_user_rsvps_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
     """Get cursor-paginated events user has RSVP'd to"""
     try:
-        events, next_cursor, prev_cursor, has_next, has_previous = event_repo.get_user_rsvps_paginated(email, cursor_params)
+        events, next_cursor = event_rsvp_service.get_user_rsvps_paginated(email, cursor_params)
         return EventCursorPaginatedResponse.create(
-            events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
+            items=events,
+            next_cursor=next_cursor,
+            prev_cursor=None,
+            has_next=bool(next_cursor),
+            has_previous=False,
+            page_size=cursor_params.page_size
         )
     except Exception as e:
         logger.error(f"Error in get_user_rsvps_paginated: {e}", exc_info=True)
@@ -273,6 +260,33 @@ def get_events_organized_by_user_paginated(email: str, cursor_params: CursorPagi
         )
     except Exception as e:
         logger.error(f"Error in get_events_organized_by_user_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
+
+def get_user_interested_events_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    """Get cursor-paginated events user has RSVP'd as 'interested'"""
+    try:
+        events, next_cursor = event_rsvp_service.get_user_rsvps_paginated(email, cursor_params)
+        def is_event_dict(e):
+            return isinstance(e, dict) and "rsvpList" in e and isinstance(e["rsvpList"], list)
+
+        def has_interested_rsvp(e):
+            return any(
+                isinstance(rsvp, dict) and rsvp.get("email") == email and rsvp.get("status") == "interested"
+                for rsvp in e.get("rsvpList", []) if isinstance(e, dict)
+            )
+
+        filtered_events = [e for e in events if is_event_dict(e) and has_interested_rsvp(e)]
+        return EventCursorPaginatedResponse.create(
+            items=filtered_events,
+            next_cursor=next_cursor,
+            prev_cursor=None,
+            has_next=bool(next_cursor),
+            has_previous=False,
+            page_size=cursor_params.page_size
+        )
+    except Exception as e:
+        logger.error(f"Error in get_user_interested_events_paginated: {e}", exc_info=True)
+        return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
         return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
 def get_events_moderated_by_user_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
@@ -299,53 +313,43 @@ def get_archived_events_paginated(cursor_params: CursorPaginationParams, user_em
 
 def get_rsvp_response_data(event_id: str, user_email: str, action: str) -> dict:
     """Get formatted RSVP response data - centralized response formatting"""
-    try:
-        event = get_event_by_id(event_id)
-        rsvp_list = event.get("rsvpList", []) if event else []
-        
-        return {
-            "message": f"RSVP {action} successfully",
-            "rsvp_status": "going" if action == "created" else None,
-            "event": {
-                "id": event_id,
-                "title": event.get("eventName", "") if event else "",
-                "current_attendees": len(rsvp_list)
-            }
+    # Delegate to event_rsvp_service if advanced formatting is needed
+    event = get_event_by_id(event_id)
+    rsvp_list = event_rsvp_service.get_rsvp_list(event_id) if event else []
+    return {
+        "message": f"RSVP {action} successfully",
+        "rsvp_status": "going" if action == "created" else None,
+        "event": {
+            "id": event_id,
+            "title": event.get("eventName", "") if event else "",
+            "current_attendees": len(rsvp_list)
         }
-    except Exception as e:
-        raise Exception(f"Error getting RSVP response data: {e}")
+    }
 
 def get_paginated_rsvp_list(event_id: str, page: Optional[int] = None, page_size: int = 10) -> dict:
     """Get paginated RSVP list - centralized pagination logic"""
-    try:
-        rsvp_list = get_rsvp_list(event_id)
-        
-        if page is not None:
-            # Paginated response
-            total_count = len(rsvp_list)
-            start_idx = (page - 1) * page_size
-            end_idx = start_idx + page_size
-            paginated_rsvps = rsvp_list[start_idx:end_idx]
-            
-            return {
-                "items": [{"user_email": email} for email in paginated_rsvps],
-                "pagination": {
-                    "page": page,
-                    "page_size": page_size,
-                    "total": total_count,
-                    "total_pages": (total_count + page_size - 1) // page_size,
-                    "has_next": end_idx < total_count,
-                    "has_prev": page > 1
-                }
+    rsvp_list = event_rsvp_service.get_rsvp_list(event_id)
+    if page is not None:
+        total_count = len(rsvp_list)
+        start_idx = (page - 1) * page_size
+        end_idx = start_idx + page_size
+        paginated_rsvps = rsvp_list[start_idx:end_idx]
+        return {
+            "items": paginated_rsvps,
+            "pagination": {
+                "page": page,
+                "page_size": page_size,
+                "total": total_count,
+                "total_pages": (total_count + page_size - 1) // page_size,
+                "has_next": end_idx < total_count,
+                "has_prev": page > 1
             }
-        else:
-            # Non-paginated response
-            return {
-                "rsvp_list": rsvp_list,
-                "total_count": len(rsvp_list)
-            }
-    except Exception as e:
-        raise Exception(f"Error getting paginated RSVP list: {e}")
+        }
+    else:
+        return {
+            "rsvp_list": rsvp_list,
+            "total_count": len(rsvp_list)
+        }
 
 def archive_event_with_validation(event_id: str, archived_by: str, reason: str = "Event archived") -> dict:
     """Archive event with business logic validation and response formatting"""

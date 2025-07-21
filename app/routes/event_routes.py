@@ -21,8 +21,11 @@ from app.services.event_service import (
     get_rsvp_response_data,
     get_paginated_rsvp_list,
     archive_event_with_validation,
-    get_all_events
+    get_all_events,
+    get_user_interested_events_paginated
 )
+from app.services.event_rsvp_service import EventRsvpService
+event_rsvp_service = EventRsvpService()
 
 from app.services.event_ingestion_service import (
     fetch_ticketmaster_events,
@@ -40,6 +43,19 @@ from app.utils.http_exceptions import event_not_found, operation_failed, HTTPExc
 from typing import Optional
 
 event_router = APIRouter()
+
+# ==================== USER EVENT ROUTES ====================
+@event_router.get("/me/interested")
+async def fetch_user_interested_events(
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
+    current_user: dict = Depends(user_only)
+):
+    """Return events where the user RSVP'd as 'interested' (paginated)"""
+    try:
+        email = current_user["email"]
+        return get_user_interested_events_paginated(email, cursor_params)
+    except Exception as e:
+        raise HTTPExceptionHelper.server_error(str(e))
 
 # Create a new event
 @event_router.post("/new")
@@ -174,8 +190,6 @@ async def fetch_user_rsvped_events(
         raise HTTPExceptionHelper.server_error(str(e))
 
 # Events organized by user (cursor pagination)
-
-# Events organized by user (cursor pagination)
 @event_router.get("/me/organized")
 async def fetch_user_organized_events(
     cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
@@ -305,20 +319,22 @@ async def bulk_archive_past_events(current_user: dict = Depends(admin_only)):
 @event_router.post("/{event_id}/rsvp")
 async def rsvp_to_event_endpoint(
     event_id: str,
+    status: str = Body("joined", embed=True),
     current_user: dict = Depends(user_only)
 ):
-    """RSVP to an event"""
+    """RSVP to an event (status: joined or interested)"""
+    # Use the already instantiated event_rsvp_service
     try:
         email = current_user["email"]
-        success = rsvp_to_event(event_id, email)
-        
+        if status == "interested":
+            success = event_rsvp_service.interested_in_event(event_id, email)
+        else:
+            success = event_rsvp_service.join_event(event_id, email)
         if success:
             return get_rsvp_response_data(event_id, email, "created")
         else:
             raise HTTPExceptionHelper.server_error("Failed to RSVP to event")
-            
     except ValueError as e:
-        # Handle business logic validation errors
         error_msg = str(e)
         if "not found" in error_msg:
             raise HTTPExceptionHelper.not_found(error_msg)
@@ -332,20 +348,23 @@ async def rsvp_to_event_endpoint(
 @event_router.delete("/{event_id}/rsvp")
 async def cancel_rsvp_endpoint(
     event_id: str,
+    status: str = Query("joined", description="RSVP status to cancel (joined or interested)"),
     current_user: dict = Depends(user_only)
 ):
-    """Cancel RSVP to an event"""
+    """Cancel RSVP to an event (status: joined or interested)"""
+    # Use the already instantiated event_rsvp_service
+    # ...existing code...
     try:
         email = current_user["email"]
-        success = cancel_user_rsvp(event_id, email)
-        
+        if status == "interested":
+            success = event_rsvp_service.cancel_interested_rsvp(event_id, email)
+        else:
+            success = event_rsvp_service.cancel_joined_rsvp(event_id, email)
         if success:
             return get_rsvp_response_data(event_id, email, "cancelled")
         else:
             raise HTTPExceptionHelper.server_error("Failed to cancel RSVP")
-            
     except ValueError as e:
-        # Handle business logic validation errors
         error_msg = str(e)
         if "not found" in error_msg:
             raise HTTPExceptionHelper.not_found(error_msg)
@@ -353,6 +372,32 @@ async def cancel_rsvp_endpoint(
             raise HTTPExceptionHelper.bad_request(error_msg)
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to cancel RSVP: {str(e)}")
+    
+@event_router.patch("/{event_id}/rsvp/status")
+async def update_rsvp_status_endpoint(
+    event_id: str,
+    status: str = Body(..., embed=True),
+    rating: Optional[int] = Body(None, embed=True),
+    review: Optional[str] = Body(None, embed=True),
+    current_user: dict = Depends(user_only)
+):
+    """Update RSVP status (e.g., mark attended, add review/rating)"""
+    # Use the already instantiated event_rsvp_service
+    try:
+        email = current_user["email"]
+        success = event_rsvp_service.update_rsvp_status(event_id, email, status, rating, review)
+        if success:
+            return get_rsvp_response_data(event_id, email, "updated")
+        else:
+            raise HTTPExceptionHelper.server_error("Failed to update RSVP status")
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg:
+            raise HTTPExceptionHelper.not_found(error_msg)
+        else:
+            raise HTTPExceptionHelper.bad_request(error_msg)
+    except Exception as e:
+        raise HTTPExceptionHelper.server_error(f"Failed to update RSVP status: {str(e)}")
 
 @event_router.get("/{event_id}/rsvps")
 async def get_event_rsvps(

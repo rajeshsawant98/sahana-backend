@@ -2,6 +2,7 @@ from .event_crud_repository import EventCrudRepository
 from .event_query_repository import EventQueryRepository
 from .event_archive_repository import EventArchiveRepository
 from .event_rsvp_repository import EventRsvpRepository
+from app.services.event_rsvp_service import EventRsvpService
 from .event_user_repository import EventUserRepository
 from app.models.pagination import PaginationParams, EventFilters, CursorPaginationParams
 from app.utils.logger import get_repository_logger
@@ -18,6 +19,7 @@ class EventRepositoryManager:
         self.query_repo = EventQueryRepository()
         self.archive_repo = EventArchiveRepository()
         self.rsvp_repo = EventRsvpRepository()
+        self.rsvp_service = EventRsvpService()
         self.user_repo = EventUserRepository()
         self.logger = get_repository_logger(__name__)
 
@@ -85,31 +87,43 @@ class EventRepositoryManager:
         """Get statistics about archived events"""
         return self.archive_repo.get_archive_statistics()
 
-    # RSVP Operations (delegated to EventRsvpRepository)
-    def rsvp_to_event(self, event_id: str, user_email: str) -> bool:
-        """Add user RSVP to an event"""
-        return self.rsvp_repo.rsvp_to_event(event_id, user_email)
+    # RSVP Operations (delegated to EventRsvpService)
+    def join_event(self, event_id: str, user_email: str) -> bool:
+        """RSVP as joined to an event"""
+        return self.rsvp_service.join_event(event_id, user_email)
 
-    def cancel_rsvp(self, event_id: str, user_email: str) -> bool:
-        """Remove user RSVP from an event"""
-        return self.rsvp_repo.cancel_rsvp(event_id, user_email)
+    def interested_in_event(self, event_id: str, user_email: str) -> bool:
+        """RSVP as interested to an event"""
+        return self.rsvp_service.interested_in_event(event_id, user_email)
 
-    def get_rsvp_list(self, event_id: str) -> List[str]:
-        """Get list of users who RSVP'd to an event"""
-        return self.rsvp_repo.get_rsvp_list(event_id)
+    def cancel_joined_rsvp(self, event_id: str, user_email: str) -> bool:
+        """Cancel RSVP with status 'joined'"""
+        return self.rsvp_service.cancel_joined_rsvp(event_id, user_email)
+
+    def cancel_interested_rsvp(self, event_id: str, user_email: str) -> bool:
+        """Cancel RSVP with status 'interested'"""
+        return self.rsvp_service.cancel_interested_rsvp(event_id, user_email)
+
+    def update_rsvp_status(self, event_id: str, user_email: str, status: str, rating: Optional[int] = None, review: Optional[str] = None) -> bool:
+        """Update RSVP status and optionally set review/rating"""
+        return self.rsvp_service.update_rsvp_status(event_id, user_email, status, rating, review)
+
+    def get_rsvp_list(self, event_id: str) -> List[Dict[str, Any]]:
+        """Get structured RSVP list for an event"""
+        return self.rsvp_service.get_rsvp_list(event_id)
 
     def get_user_rsvps(self, user_email: str) -> List[Dict[str, Any]]:
-        """Get events a user has RSVP'd to (non-paginated)"""
-        return self.rsvp_repo.get_user_rsvps(user_email)
+        """Get all events a user has RSVP'd to"""
+        return self.rsvp_service.get_user_rsvps(user_email)
 
     def get_user_rsvps_paginated(self, user_email: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
-        """Get cursor paginated events a user has RSVP'd to"""
-        events, next_cursor = self.rsvp_repo.get_user_rsvps_paginated(user_email, cursor_params)
+        """Get cursor-paginated events a user has RSVP'd to"""
+        events, next_cursor = self.rsvp_service.get_user_rsvps_paginated(user_email, cursor_params)
         return events, next_cursor, None, bool(next_cursor), False
 
     def get_rsvp_statistics(self, event_id: str) -> Dict[str, Any]:
         """Get RSVP statistics for an event"""
-        return self.rsvp_repo.get_rsvp_statistics(event_id)
+        return self.rsvp_service.get_rsvp_statistics(event_id)
 
     # User Operations (delegated to EventUserRepository)
     def get_events_by_creator(self, email: str) -> List[Dict[str, Any]]:
