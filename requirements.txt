@@ -16,3 +16,4 @@ requests
 openai
 playwright
 email-validator
+faker
