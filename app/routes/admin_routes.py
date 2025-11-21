@@ -27,7 +27,7 @@ async def fetch_all_users(
         page_size = page_size or 10
         pagination = PaginationParams(page=page, page_size=page_size)
         filters = UserFilters(role=role, profession=profession)
-        result = get_all_users_paginated(pagination, filters)
+        result = await get_all_users_paginated(pagination, filters)
         
         # Convert to PaginatedUsersResponse format
         user_responses = []
@@ -48,7 +48,7 @@ async def fetch_all_users(
             has_previous=result.has_previous
         )
     else:
-        users = get_all_users()
+        users = await get_all_users()
         if users:
             return {"users": users}
         raise HTTPExceptionHelper.not_found("No users found")   

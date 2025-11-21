@@ -7,19 +7,19 @@ from typing import Tuple, List, Optional, Dict, Any
 
 class EventRsvpRepository(BaseRepository):
     # RSVP status setters
-    def join_rsvp(self, event_id: str, user_email: str) -> bool:
+    async def join_rsvp(self, event_id: str, user_email: str) -> bool:
         """RSVP as joined to an event"""
-        return self._set_rsvp_status(event_id, user_email, "joined")
+        return await self._set_rsvp_status(event_id, user_email, "joined")
 
-    def interested_rsvp(self, event_id: str, user_email: str) -> bool:
+    async def interested_rsvp(self, event_id: str, user_email: str) -> bool:
         """RSVP as interested to an event"""
-        return self._set_rsvp_status(event_id, user_email, "interested")
+        return await self._set_rsvp_status(event_id, user_email, "interested")
 
-    def _set_rsvp_status(self, event_id: str, user_email: str, status: str) -> bool:
+    async def _set_rsvp_status(self, event_id: str, user_email: str, status: str) -> bool:
         """Helper to set RSVP status for a user, removing rating/review if not attended"""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             if not event_doc.exists:
                 self.logger.warning(f"Event {event_id} not found for RSVP")
                 return False
@@ -48,7 +48,7 @@ class EventRsvpRepository(BaseRepository):
             if not found:
                 new_rsvp = {"email": user_email, "status": status}
                 rsvp_objs.append(new_rsvp)
-            event_ref.update({"rsvpList": rsvp_objs})
+            await event_ref.update({"rsvpList": rsvp_objs})
             self.logger.info(f"User {user_email} RSVP'd to event {event_id} as {status}")
             return True
         except Exception as e:
@@ -56,19 +56,19 @@ class EventRsvpRepository(BaseRepository):
             return False
 
     # RSVP cancellers
-    def cancel_joined_rsvp(self, event_id: str, user_email: str) -> bool:
+    async def cancel_joined_rsvp(self, event_id: str, user_email: str) -> bool:
         """Remove RSVP with status 'joined' for a user"""
-        return self._cancel_rsvp_by_status(event_id, user_email, "joined")
+        return await self._cancel_rsvp_by_status(event_id, user_email, "joined")
 
-    def cancel_interested_rsvp(self, event_id: str, user_email: str) -> bool:
+    async def cancel_interested_rsvp(self, event_id: str, user_email: str) -> bool:
         """Remove RSVP with status 'interested' for a user"""
-        return self._cancel_rsvp_by_status(event_id, user_email, "interested")
+        return await self._cancel_rsvp_by_status(event_id, user_email, "interested")
 
-    def _cancel_rsvp_by_status(self, event_id: str, user_email: str, status: str) -> bool:
+    async def _cancel_rsvp_by_status(self, event_id: str, user_email: str, status: str) -> bool:
         """Helper to remove RSVP for a user with a specific status"""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             if not event_doc.exists:
                 self.logger.warning(f"Event {event_id} not found for RSVP cancel")
                 return False
@@ -85,7 +85,7 @@ class EventRsvpRepository(BaseRepository):
                     removed = True
                     continue
                 rsvp_objs.append(rsvp)
-            event_ref.update({"rsvpList": rsvp_objs})
+            await event_ref.update({"rsvpList": rsvp_objs})
             self.logger.info(f"User {user_email} cancelled RSVP with status '{status}' for event {event_id}")
             if not removed:
                 self.logger.warning(f"No RSVP found for user {user_email} with status '{status}' in event {event_id}")
@@ -104,15 +104,15 @@ class EventRsvpRepository(BaseRepository):
         self.logger = get_repository_logger(__name__)
 
     # Deprecated: use join_rsvp or interested_rsvp
-    def rsvp_to_event(self, event_id: str, user_email: str) -> bool:
+    async def rsvp_to_event(self, event_id: str, user_email: str) -> bool:
         """Legacy RSVP join method (for backward compatibility)"""
-        return self.join_rsvp(event_id, user_email)
+        return await self.join_rsvp(event_id, user_email)
 
-    def cancel_rsvp(self, event_id: str, user_email: str) -> bool:
+    async def cancel_rsvp(self, event_id: str, user_email: str) -> bool:
         """Remove user RSVP from an event (object-based)"""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             if not event_doc.exists:
                 self.logger.warning(f"Event {event_id} not found for RSVP cancel")
                 return False
@@ -123,18 +123,18 @@ class EventRsvpRepository(BaseRepository):
             current_rsvps = event_data.get("rsvpList", [])
             # Remove RSVP for user
             new_rsvps = [r for r in current_rsvps if r["email"] != user_email]
-            event_ref.update({"rsvpList": new_rsvps})
+            await event_ref.update({"rsvpList": new_rsvps})
             self.logger.info(f"User {user_email} cancelled RSVP for event {event_id}")
             return True
         except Exception as e:
             self.logger.error(f"Error cancelling RSVP for user {user_email} from event {event_id}: {e}", exc_info=True)
             return False
 
-    def get_rsvp_list(self, event_id: str) -> List[Dict[str, Any]]:
+    async def get_rsvp_list(self, event_id: str) -> List[Dict[str, Any]]:
         """Get structured RSVP list for an event"""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             if event_doc.exists:
                 event_data = event_doc.to_dict()
                 rsvp_list = event_data.get("rsvpList", []) if event_data else []
@@ -147,11 +147,11 @@ class EventRsvpRepository(BaseRepository):
             return []
         
         
-    def update_rsvp_status(self, event_id: str, user_email: str, status: str, rating: Optional[int] = None, review: Optional[str] = None) -> bool:
+    async def update_rsvp_status(self, event_id: str, user_email: str, status: str, rating: Optional[int] = None, review: Optional[str] = None) -> bool:
         """Update RSVP status for a user. If status is 'attended', set review and rating."""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             if not event_doc.exists:
                 self.logger.warning(f"Event {event_id} not found for RSVP update")
                 return False
@@ -176,19 +176,19 @@ class EventRsvpRepository(BaseRepository):
                     updated = True
                 rsvp_objs.append(rsvp)
             if updated:
-                event_ref.update({"rsvpList": rsvp_objs})
+                await event_ref.update({"rsvpList": rsvp_objs})
             self.logger.info(f"User {user_email} RSVP status updated for event {event_id} to {status}")
             return updated
         except Exception as e:
             self.logger.error(f"Error updating RSVP status for user {user_email} in event {event_id}: {e}", exc_info=True)
             return False
 
-    def get_user_rsvps(self, user_email: str) -> List[Dict[str, Any]]:
+    async def get_user_rsvps(self, user_email: str) -> List[Dict[str, Any]]:
         """Get all events a user has RSVP'd to (object-based filtering)"""
         try:
             docs = self.collection.stream()
             events = []
-            for doc in docs:
+            async for doc in docs:
                 event_data = doc.to_dict()
                 if event_data and event_data.get("isArchived") != True:
                     rsvp_list = event_data.get("rsvpList", [])
@@ -200,7 +200,7 @@ class EventRsvpRepository(BaseRepository):
             self.logger.error(f"Error getting user RSVPs for {user_email}: {e}", exc_info=True)
             return []
 
-    def get_user_rsvps_paginated(
+    async def get_user_rsvps_paginated(
         self, 
         user_email: str, 
         cursor_params: Optional[CursorPaginationParams] = None
@@ -213,7 +213,7 @@ class EventRsvpRepository(BaseRepository):
             self.logger.info(f"Getting cursor-paginated RSVPs for user: {user_email}")
             docs = self.collection.stream()
             events = []
-            for doc in docs:
+            async for doc in docs:
                 event_data = doc.to_dict()
                 if event_data and event_data.get("isArchived") != True:
                     rsvp_list = event_data.get("rsvpList", [])
@@ -254,11 +254,11 @@ class EventRsvpRepository(BaseRepository):
             self.logger.error(f"Error getting cursor-paginated RSVPs for user {user_email}: {e}")
             raise
 
-    def get_rsvp_statistics(self, event_id: str) -> Dict[str, Any]:
+    async def get_rsvp_statistics(self, event_id: str) -> Dict[str, Any]:
         """Get RSVP statistics for an event"""
         try:
             event_ref = self.collection.document(event_id)
-            event_doc = event_ref.get()
+            event_doc = await event_ref.get()
             
             if not event_doc.exists:
                 return {"total_rsvps": 0, "rsvp_list": []}

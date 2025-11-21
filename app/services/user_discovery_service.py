@@ -12,26 +12,26 @@ class UserDiscoveryService:
         self.user_repo = user_repo or UserRepository()
         self.logger = get_service_logger(__name__)
 
-    def search_users(self, search_term: str, user_email: str, limit: int = 20) -> List[UserSearchResult]:
+    async def search_users(self, search_term: str, user_email: str, limit: int = 20) -> List[UserSearchResult]:
         """Search for users and include friendship status"""
         try:
             # Validate current user exists
-            current_user = self.user_repo.get_by_email(user_email)
+            current_user = await self.user_repo.get_by_email(user_email)
             if not current_user:
                 return []
             
             # Use user repository to search for users
-            users_data = self.user_repo.search_users(search_term, user_email, limit)
+            users_data = await self.user_repo.search_users(search_term, user_email, limit)
             
             search_results = []
             for user_data in users_data:
                 # Get friendship status using existing repository methods
-                request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
+                request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
                 if request:
                     friendship_status = "friends"
                 else:
                     # Check for pending requests
-                    pending_request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
+                    pending_request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
                     if pending_request:
                         if pending_request["sender_id"] == user_email:
                             friendship_status = "request_sent"
@@ -63,11 +63,11 @@ class UserDiscoveryService:
             self.logger.error(f"Error searching users: {str(e)}")
             return []
 
-    def get_user_suggestions(self, user_email: str, limit: int = 10) -> List[UserSearchResult]:
+    async def get_user_suggestions(self, user_email: str, limit: int = 10) -> List[UserSearchResult]:
         """Get friend suggestions based on mutual friends, interests, etc."""
         try:
             # Validate current user exists
-            current_user = self.user_repo.get_by_email(user_email)
+            current_user = await self.user_repo.get_by_email(user_email)
             if not current_user:
                 return []
             
@@ -76,7 +76,7 @@ class UserDiscoveryService:
             
             # For now, return users with similar interests
             # This could be enhanced with ML algorithms
-            all_users = self.user_repo.get_all_users()
+            all_users = await self.user_repo.get_all_users()
             suggestions = []
             
             for user_data in all_users:
@@ -84,11 +84,11 @@ class UserDiscoveryService:
                     continue
                     
                 # Check if already friends or has pending request
-                request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
+                request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
                 if request:
                     continue  # Already friends
                 
-                pending_request = self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
+                pending_request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
                 if pending_request:
                     continue  # Has pending request
                 

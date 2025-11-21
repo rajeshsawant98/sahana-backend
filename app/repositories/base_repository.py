@@ -91,9 +91,11 @@ class BaseRepository:
         """Apply sorting to query"""
         return query.order_by(sort_by, direction=direction)
 
-    def _get_total_count(self, query: Query) -> int:
+    async def _get_total_count(self, query: Query) -> int:
         """Get total count for pagination metadata"""
-        return len(list(query.stream()))
+        aggregate_query = query.count()
+        results = await aggregate_query.get()
+        return results[0][0].value
 
     def _apply_cursor_sorting(self, query: Query) -> Query:
         """Apply cursor-based sorting: startTime ASC, then document ID ASC"""
@@ -128,23 +130,25 @@ class BaseRepository:
                 query = query.where("startTime", "<=", cursor_info.start_time)
         return query
 
-    def get_by_id(self, doc_id: str) -> dict | None:
+    async def get_by_id(self, doc_id: str) -> dict | None:
         """Generic get by ID method"""
-        doc = self.collection.document(doc_id).get()
+        doc = await self.collection.document(doc_id).get()
         return doc.to_dict() if doc.exists else None
 
-    def update_by_id(self, doc_id: str, update_data: dict) -> bool:
+    async def update_by_id(self, doc_id: str, update_data: dict) -> bool:
         """Generic update by ID method"""
         doc_ref = self.collection.document(doc_id)
-        if not doc_ref.get().exists:
+        doc = await doc_ref.get()
+        if not doc.exists:
             return False
-        doc_ref.update(update_data)
+        await doc_ref.update(update_data)
         return True
 
-    def delete_by_id(self, doc_id: str) -> bool:
+    async def delete_by_id(self, doc_id: str) -> bool:
         """Generic delete by ID method"""
         doc_ref = self.collection.document(doc_id)
-        if not doc_ref.get().exists:
+        doc = await doc_ref.get()
+        if not doc.exists:
             return False
-        doc_ref.delete()
+        await doc_ref.delete()
         return True

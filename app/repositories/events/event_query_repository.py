@@ -12,13 +12,13 @@ class EventQueryRepository(BaseRepository):
         super().__init__("events")
         self.logger = get_repository_logger(__name__)
 
-    def get_all_events(self) -> List[Dict[str, Any]]:
+    async def get_all_events(self) -> List[Dict[str, Any]]:
         """Get all non-archived events"""
         try:
             query = self.collection.limit(1000000)  # Start with collection query
             query = self._apply_non_archived_filter(query)
             query = self._apply_sorting(query)
-            docs = query.get()
+            docs = await query.get()
             events = []
             for doc in docs:
                 event_data = doc.to_dict()
@@ -31,15 +31,14 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error getting all events: {e}", exc_info=True)
             return []
 
-    def get_nearby_events(self, city: str, state: str) -> List[Dict[str, Any]]:
+    async def get_nearby_events(self, city: str, state: str) -> List[Dict[str, Any]]:
         """Get events in a specific city and state (both manual and external)"""
         try:
             # Use single filter approach to avoid Firestore inequality limitations
             query = self.collection.where("location.city", "==", city)
             
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if (event_data is not None and 
                     event_data.get("isArchived") != True and
@@ -54,15 +53,14 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error getting nearby events: {e}", exc_info=True)
             return []
 
-    def get_external_events(self, city: str, state: str) -> List[Dict[str, Any]]:
+    async def get_external_events(self, city: str, state: str) -> List[Dict[str, Any]]:
         """Get external (scraped) events in a specific city and state"""
         try:
             # Use single filter approach to avoid Firestore inequality limitations
             query = self.collection.where("location.city", "==", city)
             
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if (event_data is not None and 
                     event_data.get("isArchived") != True and
@@ -78,14 +76,13 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error getting external events: {e}", exc_info=True)
             return []
 
-    def get_events_for_archiving(self) -> List[Dict[str, Any]]:
+    async def get_events_for_archiving(self) -> List[Dict[str, Any]]:
         """Get events that should be archived (ended events)"""
         try:
             # Fetch all non-archived events (let service filter which are past)
             query = self.collection.where("isArchived", "!=", True)
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if event_data is not None:
                     event_data["eventId"] = doc.id
@@ -96,7 +93,7 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error getting events for archiving: {e}", exc_info=True)
             return []
 
-    def delete_events_before_today(self) -> int:
+    async def delete_events_before_today(self) -> int:
         """Delete events that ended before today (for cleanup purposes)"""
         try:
             today = datetime.now().date()
@@ -104,11 +101,11 @@ class EventQueryRepository(BaseRepository):
             
             # Get events that ended before today
             query = self.collection.where("endTime", "<", today_start)
-            docs = query.get()
+            docs = await query.get()
             
             deleted_count = 0
             for doc in docs:
-                doc.reference.delete()
+                await doc.reference.delete()
                 deleted_count += 1
                 
             self.logger.info(f"Deleted {deleted_count} old events")
@@ -117,7 +114,7 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error deleting old events: {e}", exc_info=True)
             return 0
 
-    def get_all_events_paginated(self, cursor_params: CursorPaginationParams, 
+    async def get_all_events_paginated(self, cursor_params: CursorPaginationParams, 
                                        filters: Optional[EventFilters] = None) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         """Get cursor-paginated events with filters and startTime sorting"""
         try:
@@ -148,7 +145,7 @@ class EventQueryRepository(BaseRepository):
             query = query.limit(fetch_limit)
             
             # Execute query
-            docs = list(query.get())
+            docs = await query.get()
             events = []
             for doc in docs:
                 event_data = doc.to_dict()
@@ -308,7 +305,7 @@ class EventQueryRepository(BaseRepository):
         
         return query
 
-    def get_nearby_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+    async def get_nearby_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         """Get cursor-paginated events in a specific city and state with intelligent filtering"""
         try:
             # Parse cursor
@@ -337,7 +334,7 @@ class EventQueryRepository(BaseRepository):
             query = query.limit(fetch_limit)
             
             # Execute query
-            docs = list(query.get())
+            docs = await query.get()
             events = []
             for doc in docs:
                 event_data = doc.to_dict()
@@ -394,7 +391,7 @@ class EventQueryRepository(BaseRepository):
             self.logger.error(f"Error in nearby events cursor pagination: {e}", exc_info=True)
             return [], None, None, False, False
 
-    def get_external_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
+    async def get_external_events_paginated(self, city: str, state: str, cursor_params: CursorPaginationParams) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         """Get cursor-paginated external events with intelligent filtering"""
         try:
             # Parse cursor
@@ -422,7 +419,7 @@ class EventQueryRepository(BaseRepository):
                 fetch_limit = min(cursor_params.page_size * 3, 100)
             
             query = query.limit(fetch_limit)
-            docs = list(query.get())
+            docs = await query.get()
             events = []
             for doc in docs:
                 event_data = doc.to_dict()

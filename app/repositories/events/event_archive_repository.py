@@ -12,11 +12,11 @@ class EventArchiveRepository(BaseRepository):
         super().__init__("events")
         self.logger = get_repository_logger(__name__)
 
-    def archive_event(self, event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
+    async def archive_event(self, event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
         """Archive a single event"""
         try:
             event_ref = self.collection.document(event_id)
-            event_ref.update({
+            await event_ref.update({
                 "isArchived": True,
                 "archivedAt": datetime.now(),
                 "archivedBy": archived_by,
@@ -28,11 +28,11 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error archiving event {event_id}: {e}", exc_info=True)
             return False
 
-    def unarchive_event(self, event_id: str) -> bool:
+    async def unarchive_event(self, event_id: str) -> bool:
         """Unarchive a single event"""
         try:
             event_ref = self.collection.document(event_id)
-            event_ref.update({
+            await event_ref.update({
                 "isArchived": False,
                 "unarchivedAt": datetime.now(),
                 "archivedAt": None,
@@ -45,12 +45,12 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error unarchiving event {event_id}: {e}", exc_info=True)
             return False
 
-    def archive_events_by_ids(self, event_ids: List[str], archived_by: str, reason: str = "Automatically archived - event ended") -> int:
+    async def archive_events_by_ids(self, event_ids: List[str], archived_by: str, reason: str = "Automatically archived - event ended") -> int:
         """Archive multiple events by their IDs"""
         archived_count = 0
         try:
             for event_id in event_ids:
-                if self.archive_event(event_id, archived_by, reason):
+                if await self.archive_event(event_id, archived_by, reason):
                     archived_count += 1
             
             self.logger.info(f"Archived {archived_count} events")
@@ -59,7 +59,7 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error bulk archiving events: {e}", exc_info=True)
             return archived_count
 
-    def get_archived_events(self, user_email: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_archived_events(self, user_email: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get all archived events, optionally filtered by user"""
         try:
             # Use single filter approach to avoid Firestore issues
@@ -68,9 +68,8 @@ class EventArchiveRepository(BaseRepository):
                 query = self.collection.where("createdByEmail", "==", user_email)
                 
                 # Get all docs and filter for archived events in Python
-                docs = query.stream()
                 events = []
-                for doc in docs:
+                async for doc in query.stream():
                     event_data = doc.to_dict()
                     if event_data and event_data.get("isArchived") == True:
                         events.append(event_data)
@@ -78,9 +77,8 @@ class EventArchiveRepository(BaseRepository):
                 # If not filtering by user, filter by archived status only
                 query = self.collection.where("isArchived", "==", True)
                 
-                docs = query.stream()
                 events = []
-                for doc in docs:
+                async for doc in query.stream():
                     event_data = doc.to_dict()
                     if event_data:
                         events.append(event_data)
@@ -98,7 +96,7 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error getting archived events: {e}", exc_info=True)
             return []
 
-    def get_archived_events_paginated(
+    async def get_archived_events_paginated(
         self, 
         cursor_params: Optional[CursorPaginationParams] = None,
         user_email: Optional[str] = None
@@ -139,7 +137,7 @@ class EventArchiveRepository(BaseRepository):
             query = query.limit(page_size + 1)  # Fetch one extra to check for next page
             
             # Execute query
-            results = list(query.stream())
+            results = [doc async for doc in query.stream()]
             
             # Process results
             events = []
@@ -176,12 +174,12 @@ class EventArchiveRepository(BaseRepository):
             self.logger.error(f"Error getting cursor-paginated archived events: {e}")
             raise
 
-    def get_archive_statistics(self) -> Dict[str, Any]:
+    async def get_archive_statistics(self) -> Dict[str, Any]:
         """Get statistics about archived events"""
         try:
             # Count all archived events
             archived_query = self.collection.where("isArchived", "==", True)
-            archived_docs = archived_query.get()
+            archived_docs = await archived_query.get()
             total_archived = len(archived_docs)
             
             # Count archived events by month (last 12 months)

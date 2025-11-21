@@ -8,7 +8,7 @@ class EventCrudRepository(BaseRepository):
     def __init__(self):
         super().__init__("events")
 
-    def create_event(self, data: dict) -> dict:
+    async def create_event(self, data: dict) -> dict:
         """Create a new event"""
         doc = self.collection.document()
         event_id = doc.id
@@ -37,26 +37,26 @@ class EventCrudRepository(BaseRepository):
             "archivedBy": None,
             "archiveReason": None
         }
-        doc.set(event_payload)
+        await doc.set(event_payload)
         return {"eventId": event_id}
 
-    def get_event_by_id(self, event_id: str) -> dict | None:
+    async def get_event_by_id(self, event_id: str) -> dict | None:
         """Get event by ID"""
-        return self.get_by_id(event_id)
+        return await self.get_by_id(event_id)
 
-    def update_event(self, event_id: str, update_data: dict) -> bool:
+    async def update_event(self, event_id: str, update_data: dict) -> bool:
         """Update an event"""
-        return self.update_by_id(event_id, update_data)
+        return await self.update_by_id(event_id, update_data)
 
-    def delete_event(self, event_id: str) -> bool:
+    async def delete_event(self, event_id: str) -> bool:
         """Delete an event"""
-        return self.delete_by_id(event_id)
+        return await self.delete_by_id(event_id)
 
-    def update_event_roles(self, event_id: str, field: str, emails: list[str]) -> bool:
+    async def update_event_roles(self, event_id: str, field: str, emails: list[str]) -> bool:
         """Update event roles (organizers, moderators)"""
         try:
             event_ref = self.collection.document(event_id)
-            event_ref.update({field: emails})
+            await event_ref.update({field: emails})
             return True
         except Exception as e:
             self.logger.error(f"Error updating {field} for event {event_id}: {e}")

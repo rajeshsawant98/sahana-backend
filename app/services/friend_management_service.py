@@ -12,21 +12,21 @@ class FriendManagementService:
         self.user_repo = user_repo or UserRepository()
         self.logger = get_service_logger(__name__)
 
-    def get_friends_list(self, user_email: str) -> List[FriendProfile]:
+    async def get_friends_list(self, user_email: str) -> List[FriendProfile]:
         """Get the list of friends for a user (without events_created/events_attended for efficiency)"""
         try:
             # Validate user exists
-            user = self.user_repo.get_by_email(user_email)
+            user = await self.user_repo.get_by_email(user_email)
             if not user:
                 return []
 
             # Get friend IDs from accepted friend requests
-            friend_ids = self.friend_repo.get_accepted_friendship_ids(user_email)
+            friend_ids = await self.friend_repo.get_accepted_friendship_ids(user_email)
 
             friends = []
             for friend_id in friend_ids:
                 # Get user details for each friend
-                friend_user = self.user_repo.get_by_email(friend_id)
+                friend_user = await self.user_repo.get_by_email(friend_id)
                 if friend_user:
                     friend_profile = FriendProfile(
                         id=friend_user.get("email", friend_id),  # Use email as ID
@@ -52,27 +52,27 @@ class FriendManagementService:
             self.logger.error(f"Error getting friends list: {str(e)}", extra=context, exc_info=True)
             return []
 
-    def get_friendship_status(self, current_user_email: str, user_id: str) -> Dict[str, Any]:
+    async def get_friendship_status(self, current_user_email: str, user_id: str) -> Dict[str, Any]:
         """Get the friendship status between current user and another user"""
         try:
             # Validate current user exists
-            current_user = self.user_repo.get_by_email(current_user_email)
+            current_user = await self.user_repo.get_by_email(current_user_email)
             if not current_user:
                 return {"success": False, "error": "Current user not found"}
             
             # Validate target user exists
-            target_user = self.user_repo.get_by_email(user_id)
+            target_user = await self.user_repo.get_by_email(user_id)
             if not target_user:
                 return {"success": False, "error": "Target user not found"}
             
             # Get friendship status using existing repository methods
             # Check if there's an accepted request between users
-            request = self.friend_repo.find_request_between_users(current_user_email, user_id, ["accepted"])
+            request = await self.friend_repo.find_request_between_users(current_user_email, user_id, ["accepted"])
             if request:
                 status = "friends"
             else:
                 # Check for pending requests
-                pending_request = self.friend_repo.find_request_between_users(current_user_email, user_id, ["pending"])
+                pending_request = await self.friend_repo.find_request_between_users(current_user_email, user_id, ["pending"])
                 if pending_request:
                     if pending_request["sender_id"] == current_user_email:
                         status = "request_sent"
@@ -90,23 +90,23 @@ class FriendManagementService:
             self.logger.error(f"Error getting friendship status: {str(e)}")
             return {"success": False, "error": "Failed to get friendship status"}
 
-    def remove_friendship(self, user_email: str, friend_email: str) -> Dict[str, Any]:
+    async def remove_friendship(self, user_email: str, friend_email: str) -> Dict[str, Any]:
         """Remove a friendship between two users"""
         try:
             # Validate both users exist
-            user = self.user_repo.get_by_email(user_email)
-            friend = self.user_repo.get_by_email(friend_email)
+            user = await self.user_repo.get_by_email(user_email)
+            friend = await self.user_repo.get_by_email(friend_email)
             
             if not user or not friend:
                 return {"success": False, "error": "One or both users not found"}
             
             # Get the friendship request using existing method
-            request = self.friend_repo.find_request_between_users(user_email, friend_email, ["accepted"])
+            request = await self.friend_repo.find_request_between_users(user_email, friend_email, ["accepted"])
             if not request:
                 return {"success": False, "error": "No active friendship found"}
             
             # Delete the friendship
-            success = self.friend_repo.delete_friend_request(request["id"])
+            success = await self.friend_repo.delete_friend_request(request["id"])
             
             if success:
                 return {

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Body, Query
+import asyncio
 from app.services.event_service import (
     create_event,
     get_all_events_paginated,
@@ -53,7 +54,7 @@ async def fetch_user_interested_events(
     """Return events where the user RSVP'd as 'interested' (paginated)"""
     try:
         email = current_user["email"]
-        return get_user_interested_events_paginated(email, cursor_params)
+        return await get_user_interested_events_paginated(email, cursor_params)
     except Exception as e:
         raise HTTPExceptionHelper.server_error(str(e))
 
@@ -61,7 +62,7 @@ async def fetch_user_interested_events(
 @event_router.post("/new")
 async def create_new_event(event: EventCreateRequest , current_user: dict = Depends(user_only)):
     event_data = event.model_dump()
-    result = create_event(event_data)
+    result = await create_event(event_data)
     if result:
         return {"message": "Event created successfully", "eventId": result["eventId"]}
     raise operation_failed("create event")
@@ -74,13 +75,13 @@ async def fetch_all_events(
     filter_params: dict = Depends(get_event_filter_params)
 ):
     filters = EventFilters(**filter_params)
-    return get_all_events_paginated(cursor_params, filters)
+    return await get_all_events_paginated(cursor_params, filters)
 
 # Get all events (non-paginated, for admin/analytics use)
 @event_router.get("/all")
 async def fetch_all_events_non_paginated(current_user: dict = Depends(admin_only)):
     """Return all non-archived events (non-paginated, admin only)"""
-    return get_all_events()
+    return await get_all_events()
 
 # Get archived events (creator only) with cursor pagination
 @event_router.get("/me/archived")
@@ -89,7 +90,7 @@ async def get_my_archived_events(
     current_user: dict = Depends(user_only)
 ):
     user_email = current_user["email"]
-    return get_archived_events_paginated(cursor_params, user_email)
+    return await get_archived_events_paginated(cursor_params, user_email)
 
 # Get all archived events (admin only) with cursor pagination
 @event_router.get("/archived")
@@ -106,14 +107,14 @@ async def get_all_archived_events(
             page_size=page_size or 10,
             direction=direction or "next"
         )
-        return get_archived_events_paginated(cursor_params)  # No user filter = get all
+        return await get_archived_events_paginated(cursor_params)  # No user filter = get all
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to retrieve archived events: {str(e)}")
 
 # Get event by ID
 @event_router.get("/{event_id}")
 async def fetch_event_by_id(event_id: str):
-    event = get_event_by_id(event_id)
+    event = await get_event_by_id(event_id)
     if event:
         return event
     raise event_not_found()
@@ -121,7 +122,7 @@ async def fetch_event_by_id(event_id: str):
 # Update event (creator only)
 @event_router.put("/{event_id}")
 async def update_existing_event(event_id: str, update_data: dict = Body(...), current_user: dict = Depends(require_event_creator)):
-    success = update_event(event_id, update_data)
+    success = await update_event(event_id, update_data)
     if success:
         return {"message": "Event updated successfully"}
     raise operation_failed("update event")
@@ -129,7 +130,7 @@ async def update_existing_event(event_id: str, update_data: dict = Body(...), cu
 # Delete event (creator only)
 @event_router.delete("/{event_id}")
 async def delete_existing_event(event_id: str, current_user: dict = Depends(require_event_creator)):
-    success = delete_event(event_id)
+    success = await delete_event(event_id)
     if success:
         return {"message": "Event deleted successfully"}
     raise operation_failed("delete event")
@@ -145,7 +146,7 @@ async def archive_event_endpoint(
     reason = archive_data.get("reason", "Event archived")
     archived_by = current_user["email"]
     
-    result = archive_event_with_validation(event_id, archived_by, reason)
+    result = await archive_event_with_validation(event_id, archived_by, reason)
     
     if result["success"]:
         return {
@@ -163,7 +164,7 @@ async def archive_event_endpoint(
 # Unarchive event (creator only)
 @event_router.patch("/{event_id}/unarchive")
 async def unarchive_event_endpoint(event_id: str, current_user: dict = Depends(require_event_creator)):
-    success = unarchive_event(event_id)
+    success = await unarchive_event(event_id)
     if success:
         return {"message": "Event restored successfully"}
     raise HTTPExceptionHelper.server_error("Failed to restore event")
@@ -175,7 +176,7 @@ async def fetch_my_created_events(
     current_user: dict = Depends(user_only)
 ):
     email = current_user["email"]
-    return get_my_events_paginated(email, cursor_params)
+    return await get_my_events_paginated(email, cursor_params)
 
 # Events RSVP'd by user (cursor pagination)
 @event_router.get("/me/rsvped")
@@ -185,7 +186,7 @@ async def fetch_user_rsvped_events(
 ):
     try:
         email = current_user["email"]
-        return get_user_rsvps_paginated(email, cursor_params)
+        return await get_user_rsvps_paginated(email, cursor_params)
     except Exception as e:
         raise HTTPExceptionHelper.server_error(str(e))
 
@@ -197,7 +198,7 @@ async def fetch_user_organized_events(
 ):
     try:
         email = current_user["email"]
-        return get_events_organized_by_user_paginated(email, cursor_params)
+        return await get_events_organized_by_user_paginated(email, cursor_params)
     except Exception as e:
         raise HTTPExceptionHelper.server_error(str(e))
 
@@ -215,15 +216,15 @@ async def fetch_user_moderated_events(
     
 # Fetch + Ingest Ticketmaster events (per city/state)
 @event_router.post("/fetch-ticketmaster-events")
-def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict = Depends(admin_only)):
+async def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict = Depends(admin_only)):
     city = payload.get("city")
     state = payload.get("state")
 
     if not city or not state:
         raise HTTPExceptionHelper.bad_request("City and state are required.")
 
-    raw_events = fetch_ticketmaster_events(city, state)
-    summary = ingest_bulk_events(raw_events)
+    raw_events = await asyncio.to_thread(fetch_ticketmaster_events, city, state)
+    summary = await ingest_bulk_events(raw_events)
 
     return {
         "message": f"{summary['saved']} new events ingested, {summary['skipped']} skipped.",
@@ -232,7 +233,7 @@ def fetch_and_ingest_ticketmaster(payload: dict = Body(...), current_user: dict 
 
 # Nearby community events by city/state (cursor pagination)
 @event_router.get("/location/nearby")
-def list_nearby_events(
+async def list_nearby_events(
     city: str = Query(..., description="City name"),
     state: str = Query(..., description="State name"),
     # Cursor pagination parameters
@@ -246,7 +247,7 @@ def list_nearby_events(
         page_size=page_size or 12,
         direction=direction or "next"
     )
-    return get_nearby_events_paginated(city, state, cursor_params)
+    return await get_nearby_events_paginated(city, state, cursor_params)
 
 @event_router.patch("/{event_id}/organizers")
 async def update_event_organizers(
@@ -254,7 +255,7 @@ async def update_event_organizers(
     payload: dict = Body(...),
     current_user: dict = Depends(require_event_creator)
 ):
-    event = get_event_by_id(event_id)
+    event = await get_event_by_id(event_id)
     if not event:
         raise HTTPExceptionHelper.not_found("Event not found")
 
@@ -264,7 +265,7 @@ async def update_event_organizers(
     if creator_email is None:
         raise HTTPExceptionHelper.server_error("Event creator email is missing.")
 
-    result = set_organizers(event_id, new_organizers, creator_email)
+    result = await set_organizers(event_id, new_organizers, creator_email)
 
     if result["success"]:
         return {
@@ -280,12 +281,12 @@ async def update_event_moderators(
     payload: dict = Body(...),
     current_user: dict = Depends(require_event_organizer)
 ):
-    event = get_event_by_id(event_id)
+    event = await get_event_by_id(event_id)
     if not event:
         raise HTTPExceptionHelper.not_found("Event not found")
 
     new_moderators = payload.get("moderatorEmails", [])
-    result = set_moderators(event_id, new_moderators)
+    result = await set_moderators(event_id, new_moderators)
 
     if result["success"]:
         return {
@@ -306,7 +307,7 @@ async def ingest_for_all_user_locations(current_user: dict = Depends(admin_only)
 async def bulk_archive_past_events(current_user: dict = Depends(admin_only)):
     """Archive all events that have ended (admin only)"""
     try:
-        archived_count = archive_past_events(current_user.get("email", "admin"))
+        archived_count = await archive_past_events(current_user.get("email", "admin"))
         return {
             "message": f"Successfully archived {archived_count} past events",
             "archived_count": archived_count
@@ -327,11 +328,11 @@ async def rsvp_to_event_endpoint(
     try:
         email = current_user["email"]
         if status == "interested":
-            success = event_rsvp_service.interested_in_event(event_id, email)
+            success = await event_rsvp_service.interested_in_event(event_id, email)
         else:
-            success = event_rsvp_service.join_event(event_id, email)
+            success = await event_rsvp_service.join_event(event_id, email)
         if success:
-            return get_rsvp_response_data(event_id, email, "created")
+            return await get_rsvp_response_data(event_id, email, "created")
         else:
             raise HTTPExceptionHelper.server_error("Failed to RSVP to event")
     except ValueError as e:
@@ -357,11 +358,11 @@ async def cancel_rsvp_endpoint(
     try:
         email = current_user["email"]
         if status == "interested":
-            success = event_rsvp_service.cancel_interested_rsvp(event_id, email)
+            success = await event_rsvp_service.cancel_interested_rsvp(event_id, email)
         else:
-            success = event_rsvp_service.cancel_joined_rsvp(event_id, email)
+            success = await event_rsvp_service.cancel_joined_rsvp(event_id, email)
         if success:
-            return get_rsvp_response_data(event_id, email, "cancelled")
+            return await get_rsvp_response_data(event_id, email, "cancelled")
         else:
             raise HTTPExceptionHelper.server_error("Failed to cancel RSVP")
     except ValueError as e:
@@ -385,9 +386,9 @@ async def update_rsvp_status_endpoint(
     # Use the already instantiated event_rsvp_service
     try:
         email = current_user["email"]
-        success = event_rsvp_service.update_rsvp_status(event_id, email, status, rating, review)
+        success = await event_rsvp_service.update_rsvp_status(event_id, email, status, rating, review)
         if success:
-            return get_rsvp_response_data(event_id, email, "updated")
+            return await get_rsvp_response_data(event_id, email, "updated")
         else:
             raise HTTPExceptionHelper.server_error("Failed to update RSVP status")
     except ValueError as e:
@@ -408,7 +409,7 @@ async def get_event_rsvps(
     """Get RSVP list for an event"""
     try:
         page_size = page_size or 10
-        return get_paginated_rsvp_list(event_id, page, page_size)
+        return await get_paginated_rsvp_list(event_id, page, page_size)
             
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to get RSVP list: {str(e)}")

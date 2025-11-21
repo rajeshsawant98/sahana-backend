@@ -12,10 +12,10 @@ class UserRepository:
         self.collection = self.db.collection("users")
         self.logger = get_service_logger(__name__)
     
-    def get_all_users(self):
+    async def get_all_users(self):
         try:
             users = []
-            for doc in self.collection.stream():
+            async for doc in self.collection.stream():
                 user_data = doc.to_dict()
                 if user_data:
                     user_data["id"] = doc.id  # Add document ID
@@ -25,7 +25,7 @@ class UserRepository:
             self.logger.error(f"Error retrieving users: {str(e)}")
             return []
 
-    def get_all_users_paginated(self, pagination: PaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], int]:
+    async def get_all_users_paginated(self, pagination: PaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], int]:
         """Get paginated users with optional filters"""
         try:
             query = self.collection
@@ -40,19 +40,21 @@ class UserRepository:
             # Order by email for consistent pagination
             query = query.order_by("email")
             
-            # Get total count
-            total_count = len(list(query.stream()))
+            # Get total count - inefficient but works for now
+            # Ideally use aggregation query
+            all_docs = await query.get()
+            total_count = len(all_docs)
             
             # Apply pagination
             query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
-            users = [user.to_dict() for user in query_paginated.stream()]
+            users = [user.to_dict() async for user in query_paginated.stream()]
             
             return users, total_count
         except Exception as e:
             self.logger.error(f"Error retrieving paginated users: {str(e)}")
             return [], 0
 
-    def get_all_users_cursor_paginated(self, cursor_params: CursorPaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], Optional[str], Optional[str], bool, bool]:
+    async def get_all_users_cursor_paginated(self, cursor_params: CursorPaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], Optional[str], Optional[str], bool, bool]:
         """Get cursor-paginated users with optional filters"""
         try:
             # Parse cursor
@@ -92,7 +94,7 @@ class UserRepository:
             query = query.limit(fetch_limit)
             
             # Execute query
-            docs = list(query.get())
+            docs = await query.get()
             users = []
             for doc in docs:
                 user_data = doc.to_dict()
@@ -153,10 +155,14 @@ class UserRepository:
             self.logger.error(f"Error in users cursor pagination: {e}", exc_info=True)
             return [], None, None, False, False
 
-    def get_by_email(self, email: str):
+    async def get_by_email(self, email: str):
         try:
-            query = self.collection.where("email", "==", email).stream()
-            user = next(query, None)
+            query = self.collection.where("email", "==", email).limit(1).stream()
+            user = None
+            async for doc in query:
+                user = doc
+                break
+            
             if user:
                 user_data = user.to_dict()
                 if user_data:  # Check that user_data is not None
@@ -167,9 +173,9 @@ class UserRepository:
             self.logger.error(f"Error retrieving user: {str(e)}")
             return None
 
-    def get_by_id(self, uid: str):
+    async def get_by_id(self, uid: str):
         try:
-            doc = self.collection.document(uid).get()
+            doc = await self.collection.document(uid).get()
             if doc.exists:
                 user_data = doc.to_dict()
                 if user_data:
@@ -180,10 +186,10 @@ class UserRepository:
             self.logger.error(f"Error retrieving user by ID: {str(e)}")
             return None
 
-    def create_with_password(self, email: str, password: str, name: str):
+    async def create_with_password(self, email: str, password: str, name: str):
         try:
             hashed_password = pwd_context.hash(password)
-            self.collection.document(email).set({
+            await self.collection.document(email).set({
                 "name": name,
                 "email": email,
                 "password": hashed_password,
@@ -193,9 +199,9 @@ class UserRepository:
         except Exception as e:
             self.logger.error(f"Error storing user with password: {str(e)}")
 
-    def verify_password(self, email: str, password: str):
+    async def verify_password(self, email: str, password: str):
         try:
-            user_doc = self.collection.document(email).get()
+            user_doc = await self.collection.document(email).get()
             if not user_doc.exists:
                 return False
 
@@ -208,10 +214,10 @@ class UserRepository:
             self.logger.error(f"Error verifying password: {str(e)}")
             return False
 
-    def store_google_user(self, user_data: dict):
+    async def store_google_user(self, user_data: dict):
         try:
             # Use email as document ID for all users (including Google users)
-            self.collection.document(user_data["email"]).set({
+            await self.collection.document(user_data["email"]).set({
                 "name": user_data["name"],
                 "email": user_data["email"],
                 "profile_picture": user_data["profile_picture"],
@@ -222,10 +228,13 @@ class UserRepository:
         except Exception as e:
             self.logger.error(f"Error storing Google user: {str(e)}")
 
-    def update_profile_by_email(self, user_data: dict, user_email: str):
+    async def update_profile_by_email(self, user_data: dict, user_email: str):
         try:
-            query = self.collection.where("email", "==", user_email).stream()
-            user = next(query, None)
+            query = self.collection.where("email", "==", user_email).limit(1).stream()
+            user = None
+            async for doc in query:
+                user = doc
+                break
 
             if not user:
                 self.logger.warning(f"No user found with email: {user_email}")
@@ -245,12 +254,12 @@ class UserRepository:
                 "birthdate": user_data.get("birthdate", existing.get("birthdate", ""))
             }
 
-            user_ref.update(update_fields)
+            await user_ref.update(update_fields)
             self.logger.info(f"User profile updated for: {user_email}")
         except Exception as e:
             self.logger.error(f"Error updating user data: {str(e)}")
 
-    def search_users(self, search_term: str, exclude_email: str, limit: int = 20) -> List[dict]:
+    async def search_users(self, search_term: str, exclude_email: str, limit: int = 20) -> List[dict]:
         """Search for users by name or email, excluding the current user"""
         try:
             if not search_term or len(search_term.strip()) < 2:
@@ -261,9 +270,7 @@ class UserRepository:
             # Get all users and filter in memory (for simplicity)
             # In production, you might want to use Firestore's full-text search or Algolia
             all_users = []
-            docs = self.collection.stream()
-            
-            for doc in docs:
+            async for doc in self.collection.stream():
                 user_data = doc.to_dict()
                 if user_data and user_data.get("email") != exclude_email:
                     # Add the document ID to user data (consistent with other methods)

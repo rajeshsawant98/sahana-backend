@@ -1,5 +1,6 @@
 import json
 import asyncio
+import pytest
 from app.services.event_ingestion_service import (
     fetch_ticketmaster_events,
     get_unique_user_locations,
@@ -117,6 +118,7 @@ def test_archive_fields_in_parsed_events():
         return None
 
 
+@pytest.mark.asyncio
 async def test_eventbrite_archive_fields():
     """Test that Eventbrite events also include proper archive fields"""
     from app.services.event_scraping_service import get_eventbrite_events

@@ -17,3 +17,5 @@ openai
 playwright
 email-validator
 faker
+pytest-asyncio
+google-cloud-firestore

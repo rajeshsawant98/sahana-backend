@@ -5,26 +5,29 @@ class EventIngestionRepository:
         self.db = get_firestore_client()
         self.collection = self.db.collection(collection_name)
 
-    def save_event(self, event: dict) -> bool:
+    async def save_event(self, event: dict) -> bool:
         try:
             event_id = event["eventId"]
-            self.collection.document(event_id).set(event, merge=True)
+            await self.collection.document(event_id).set(event, merge=True)
             return True
         except Exception as e:
             print(f"[ERROR] Failed to save event {event.get('eventName', '?')}: {e}")
             return False
 
-    def save_bulk_events(self, events: list[dict]) -> int:
+    async def save_bulk_events(self, events: list[dict]) -> int:
         saved = 0
         for event in events:
-            if self.save_event(event):
+            if await self.save_event(event):
                 saved += 1
         return saved
 
-    def get_by_original_id(self, original_id: str) -> dict | None:
+    async def get_by_original_id(self, original_id: str) -> dict | None:
         try:
             query = self.collection.where("originalId", "==", original_id).limit(1).stream()
-            result = next(query, None)
+            result = None
+            async for doc in query:
+                result = doc
+                break
             return result.to_dict() if result else None
         except Exception as e:
             print(f"[ERROR] Lookup by originalId failed: {e}")

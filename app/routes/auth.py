@@ -56,9 +56,9 @@ async def google_login(request: GoogleLoginRequest):
             "profile_picture": id_info.get("picture")
         }
 
-        store_or_update_user_data(user_data)
+        await store_or_update_user_data(user_data)
         
-        user = get_user_by_email(user_data["email"])
+        user = await get_user_by_email(user_data["email"])
         if not user:
             raise HTTPExceptionHelper.not_found("User not found")
         role = user.get("role", "user")
@@ -80,8 +80,8 @@ async def google_login(request: GoogleLoginRequest):
 # Normal Login
 @auth_router.post("/login", response_model=UserLoginResponse)
 async def normal_login(request: UserLoginRequest):
-    user = get_user_by_email(request.email)
-    if not user or not verify_user_password(request.email, request.password):
+    user = await get_user_by_email(request.email)
+    if not user or not await verify_user_password(request.email, request.password):
         raise HTTPExceptionHelper.bad_request("Invalid credentials") 
 
     access_token = create_access_token(data={"email": user["email"], "role": user.get("role", "user")})
@@ -98,13 +98,13 @@ async def normal_login(request: UserLoginRequest):
 # Register
 @auth_router.post("/register", response_model=UserLoginResponse)
 async def register_user(request: UserCreate):
-    if get_user_by_email(request.email):
+    if await get_user_by_email(request.email):
         raise HTTPExceptionHelper.bad_request("Email already exists")
 
-    store_user_with_password(request.email, request.password, request.name)
+    await store_user_with_password(request.email, request.password, request.name)
 
     # Get the newly created user
-    user = get_user_by_email(request.email)
+    user = await get_user_by_email(request.email)
     if not user:
         raise HTTPExceptionHelper.server_error("Failed to create user")
 
@@ -150,7 +150,7 @@ async def refresh_token(request: RefreshRequest):
 # Get current user profile
 @auth_router.get("/me", response_model=UserResponse)
 async def get_profile(current_user: dict = Depends(user_only)):
-    user = get_user_by_email(current_user["email"])
+    user = await get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
@@ -181,7 +181,7 @@ async def get_profile(current_user: dict = Depends(user_only)):
 # Update user profile
 @auth_router.put("/me", response_model=dict)
 async def update_profile(request: UserUpdate, current_user: dict = Depends(user_only)):
-    user = get_user_by_email(current_user["email"])
+    user = await get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
@@ -199,7 +199,7 @@ async def update_profile(request: UserUpdate, current_user: dict = Depends(user_
         else:
             update_data[field] = value
 
-    update_user_data(update_data, current_user["email"])
+    await update_user_data(update_data, current_user["email"])
     return {"message": "Profile updated successfully"}
 
 # Update user interests
@@ -208,7 +208,7 @@ class UpdateInterestsRequest(BaseModel):
 
 @auth_router.put("/me/interests", response_model=dict)
 async def update_interests(request: UpdateInterestsRequest, current_user: dict = Depends(user_only)):
-    user = get_user_by_email(current_user["email"])
+    user = await get_user_by_email(current_user["email"])
     if not user:
         raise HTTPExceptionHelper.not_found("User not found")
 
@@ -226,7 +226,7 @@ async def update_interests(request: UpdateInterestsRequest, current_user: dict =
         # Remove duplicates and trim whitespace
         cleaned_interests = list(set(interest.strip() for interest in request.interests))
         
-        update_user_data({"interests": cleaned_interests}, current_user["email"])
+        await update_user_data({"interests": cleaned_interests}, current_user["email"])
         return {"message": "User interests updated successfully"}
     except ValueError as e:
         raise HTTPExceptionHelper.bad_request(f"Invalid interests: {str(e)}")

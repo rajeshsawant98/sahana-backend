@@ -18,7 +18,7 @@ class FriendRepository:
 
     # ==================== BASIC CRUD OPERATIONS ====================
     
-    def create_friend_request(self, sender_id: str, receiver_id: str) -> str:
+    async def create_friend_request(self, sender_id: str, receiver_id: str) -> str:
         """Create a new friend request record"""
         try:
             request_id = str(uuid.uuid4())
@@ -31,16 +31,16 @@ class FriendRepository:
                 "updated_at": datetime.utcnow()
             }
             
-            self.collection.document(request_id).set(request_data)
+            await self.collection.document(request_id).set(request_data)
             return request_id
         except Exception as e:
             self.logger.error(f"Error creating friend request: {str(e)}")
             raise e
 
-    def get_request_by_id(self, request_id: str) -> Optional[Dict[str, Any]]:
+    async def get_request_by_id(self, request_id: str) -> Optional[Dict[str, Any]]:
         """Get a friend request by its ID"""
         try:
-            doc = self.collection.document(request_id).get()
+            doc = await self.collection.document(request_id).get()
             if doc.exists:
                 request_data = doc.to_dict()
                 if request_data:
@@ -51,10 +51,10 @@ class FriendRepository:
             self.logger.error(f"Error getting request by ID: {str(e)}")
             return None
 
-    def update_friend_request_status(self, request_id: str, status: str) -> bool:
+    async def update_friend_request_status(self, request_id: str, status: str) -> bool:
         """Update the status of a friend request"""
         try:
-            self.collection.document(request_id).update({
+            await self.collection.document(request_id).update({
                 "status": status,
                 "updated_at": datetime.utcnow()
             })
@@ -63,10 +63,10 @@ class FriendRepository:
             self.logger.error(f"Error updating friend request status: {str(e)}")
             return False
 
-    def delete_friend_request(self, request_id: str) -> bool:
+    async def delete_friend_request(self, request_id: str) -> bool:
         """Delete a friend request by ID"""
         try:
-            self.collection.document(request_id).delete()
+            await self.collection.document(request_id).delete()
             return True
         except Exception as e:
             self.logger.error(f"Error deleting friend request: {str(e)}")
@@ -74,7 +74,7 @@ class FriendRepository:
 
     # ==================== SIMPLE QUERY OPERATIONS ====================
 
-    def find_request_between_users(self, user1_id: str, user2_id: str, statuses: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+    async def find_request_between_users(self, user1_id: str, user2_id: str, statuses: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """Find any request between two users (either direction)"""
         try:
             if statuses is None:
@@ -87,9 +87,10 @@ class FriendRepository:
                 filter=FieldFilter("receiver_id", "==", user2_id)
             ).where(
                 filter=FieldFilter("status", "in", statuses)
-            ).limit(1).stream()
+            ).limit(1)
             
-            for doc in query1:
+            docs1 = await query1.get()
+            for doc in docs1:
                 return {**doc.to_dict(), "id": doc.id}
             
             # Check user2 -> user1
@@ -99,9 +100,10 @@ class FriendRepository:
                 filter=FieldFilter("receiver_id", "==", user1_id)
             ).where(
                 filter=FieldFilter("status", "in", statuses)
-            ).limit(1).stream()
+            ).limit(1)
             
-            for doc in query2:
+            docs2 = await query2.get()
+            for doc in docs2:
                 return {**doc.to_dict(), "id": doc.id}
                 
             return None
@@ -109,7 +111,7 @@ class FriendRepository:
             self.logger.error(f"Error finding request between users: {str(e)}")
             return None
 
-    def get_requests_for_user(self, user_id: str, direction: str = "all", status: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def get_requests_for_user(self, user_id: str, direction: str = "all", status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get friend requests for a user
         
         Args:
@@ -130,7 +132,7 @@ class FriendRepository:
                         filter=FieldFilter("status", "==", status)
                     )
                 
-                for doc in received_query.stream():
+                async for doc in received_query.stream():
                     request_data = doc.to_dict()
                     request_data["id"] = doc.id
                     request_data["direction"] = "received"
@@ -146,7 +148,7 @@ class FriendRepository:
                         filter=FieldFilter("status", "==", status)
                     )
                 
-                for doc in sent_query.stream():
+                async for doc in sent_query.stream():
                     request_data = doc.to_dict()
                     request_data["id"] = doc.id
                     request_data["direction"] = "sent"
@@ -157,7 +159,7 @@ class FriendRepository:
             self.logger.error(f"Error getting requests for user: {str(e)}")
             return []
 
-    def get_accepted_friendship_ids(self, user_id: str) -> List[str]:
+    async def get_accepted_friendship_ids(self, user_id: str) -> List[str]:
         """Get IDs of all users who are friends with the given user"""
         try:
             friend_ids = []
@@ -167,9 +169,9 @@ class FriendRepository:
                 filter=FieldFilter("sender_id", "==", user_id)
             ).where(
                 filter=FieldFilter("status", "==", "accepted")
-            ).stream()
+            )
             
-            for doc in sent_query:
+            async for doc in sent_query.stream():
                 request_data = doc.to_dict()
                 friend_ids.append(request_data["receiver_id"])
             
@@ -178,9 +180,9 @@ class FriendRepository:
                 filter=FieldFilter("receiver_id", "==", user_id)
             ).where(
                 filter=FieldFilter("status", "==", "accepted")
-            ).stream()
+            )
             
-            for doc in received_query:
+            async for doc in received_query.stream():
                 request_data = doc.to_dict()
                 friend_ids.append(request_data["sender_id"])
                     
@@ -189,16 +191,17 @@ class FriendRepository:
             self.logger.error(f"Error getting friend IDs: {str(e)}")
             return []
 
-    def get_request_by_sender_receiver(self, sender_id: str, receiver_id: str) -> Optional[Dict[str, Any]]:
+    async def get_request_by_sender_receiver(self, sender_id: str, receiver_id: str) -> Optional[Dict[str, Any]]:
         """Get a specific request by sender and receiver"""
         try:
             query = self.collection.where(
                 filter=FieldFilter("sender_id", "==", sender_id)
             ).where(
                 filter=FieldFilter("receiver_id", "==", receiver_id)
-            ).limit(1).stream()
+            ).limit(1)
             
-            for doc in query:
+            docs = await query.get()
+            for doc in docs:
                 request_data = doc.to_dict()
                 request_data["id"] = doc.id
                 return request_data

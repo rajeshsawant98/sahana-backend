@@ -11,13 +11,12 @@ class EventUserRepository(BaseRepository):
         super().__init__("events")
         self.logger = get_repository_logger(__name__)
 
-    def get_events_by_creator(self, email: str) -> List[Dict[str, Any]]:
+    async def get_events_by_creator(self, email: str) -> List[Dict[str, Any]]:
         """Get all events created by a specific user"""
         try:
             query = self.collection.where("createdByEmail", "==", email)
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if event_data and event_data.get("isArchived") != True:
                     events.append(event_data)
@@ -26,7 +25,7 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting events by creator {email}: {e}", exc_info=True)
             return []
 
-    def get_events_by_creator_paginated(
+    async def get_events_by_creator_paginated(
         self, 
         email: str, 
         cursor_params: Optional[CursorPaginationParams] = None
@@ -64,7 +63,7 @@ class EventUserRepository(BaseRepository):
             query = query.limit(page_size + 1)  # Fetch one extra to check for next page
             
             # Execute query
-            results = list(query.stream())
+            results = await query.get()
             
             # Process results
             events = []
@@ -101,13 +100,12 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting cursor-paginated events by creator {email}: {e}")
             raise
 
-    def get_events_organized_by_user(self, user_email: str) -> List[Dict[str, Any]]:
+    async def get_events_organized_by_user(self, user_email: str) -> List[Dict[str, Any]]:
         """Get events organized by a specific user"""
         try:
             query = self.collection.where("organizers", "array_contains", user_email)
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if event_data and event_data.get("isArchived") != True:
                     events.append(event_data)
@@ -116,7 +114,7 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting events organized by user {user_email}: {e}", exc_info=True)
             return []
 
-    def get_events_organized_by_user_paginated(
+    async def get_events_organized_by_user_paginated(
         self, 
         user_email: str, 
         cursor_params: Optional[CursorPaginationParams] = None
@@ -137,7 +135,7 @@ class EventUserRepository(BaseRepository):
             page_size = cursor_params.page_size if cursor_params else 20
             query = query.limit(page_size + 1)
             
-            results = list(query.stream())
+            results = await query.get()
             events = []
             has_next_page = len(results) > page_size
             
@@ -168,13 +166,12 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting cursor-paginated events organized by user {user_email}: {e}")
             raise
 
-    def get_events_moderated_by_user(self, user_email: str) -> List[Dict[str, Any]]:
+    async def get_events_moderated_by_user(self, user_email: str) -> List[Dict[str, Any]]:
         """Get events moderated by a specific user"""
         try:
             query = self.collection.where("moderators", "array_contains", user_email)
-            docs = query.stream()
             events = []
-            for doc in docs:
+            async for doc in query.stream():
                 event_data = doc.to_dict()
                 if event_data and event_data.get("isArchived") != True:
                     events.append(event_data)
@@ -183,7 +180,7 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting events moderated by user {user_email}: {e}", exc_info=True)
             return []
 
-    def get_events_moderated_by_user_paginated(
+    async def get_events_moderated_by_user_paginated(
         self, 
         user_email: str, 
         cursor_params: Optional[CursorPaginationParams] = None
@@ -204,7 +201,7 @@ class EventUserRepository(BaseRepository):
             page_size = cursor_params.page_size if cursor_params else 20
             query = query.limit(page_size + 1)
             
-            results = list(query.stream())
+            results = await query.get()
             events = []
             has_next_page = len(results) > page_size
             
@@ -235,22 +232,22 @@ class EventUserRepository(BaseRepository):
             self.logger.error(f"Error getting cursor-paginated events moderated by user {user_email}: {e}")
             raise
 
-    def update_event_roles(self, event_id: str, field: str, emails: List[str]) -> bool:
+    async def update_event_roles(self, event_id: str, field: str, emails: List[str]) -> bool:
         """Update event roles (organizers or moderators)"""
         try:
             event_ref = self.collection.document(event_id)
-            event_ref.update({field: emails})
+            await event_ref.update({field: emails})
             return True
         except Exception as e:
             self.logger.error(f"Error updating event {event_id} {field}: {e}", exc_info=True)
             return False
 
-    def get_user_event_summary(self, user_email: str) -> Dict[str, Any]:
+    async def get_user_event_summary(self, user_email: str) -> Dict[str, Any]:
         """Get a summary of all events related to a user"""
         try:
-            created_events = self.get_events_by_creator(user_email)
-            organized_events = self.get_events_organized_by_user(user_email)
-            moderated_events = self.get_events_moderated_by_user(user_email)
+            created_events = await self.get_events_by_creator(user_email)
+            organized_events = await self.get_events_organized_by_user(user_email)
+            moderated_events = await self.get_events_moderated_by_user(user_email)
             
             return {
                 "created_count": len(created_events),

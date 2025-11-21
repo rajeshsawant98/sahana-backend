@@ -12,42 +12,42 @@ class FriendRequestService:
         self.user_repo = user_repo or UserRepository()
         self.logger = get_service_logger(__name__)
 
-    def send_friend_request(self, sender_email: str, receiver_id: str) -> Dict[str, Any]:
+    async def send_friend_request(self, sender_email: str, receiver_id: str) -> Dict[str, Any]:
         """Send a friend request from sender to receiver."""
         try:
-            sender = self.user_repo.get_by_email(sender_email)
+            sender = await self.user_repo.get_by_email(sender_email)
             if not sender:
                 return {"success": False, "error": "Sender not found"}
             
-            receiver = self.user_repo.get_by_email(receiver_id)
+            receiver = await self.user_repo.get_by_email(receiver_id)
             if not receiver:
                 return {"success": False, "error": "Receiver not found"}
             
             if sender_email == receiver_id:
                 return {"success": False, "error": "Cannot send friend request to yourself"}
             
-            existing = self.friend_repo.find_request_between_users(sender_email, receiver_id)
+            existing = await self.friend_repo.find_request_between_users(sender_email, receiver_id)
             if existing:
                 if existing["status"] == "accepted":
                     return {"success": False, "error": "Already friends"}
                 if existing["status"] == "pending":
                     return {"success": False, "error": "Friend request already pending"}
             
-            request_id = self.friend_repo.create_friend_request(sender_email, receiver_id)
+            request_id = await self.friend_repo.create_friend_request(sender_email, receiver_id)
             return {"success": True, "message": "Friend request sent", "request_id": request_id}
             
         except Exception as e:
             self.logger.error(f"Error sending friend request: {str(e)}")
             return {"success": False, "error": "Failed to send friend request"}
 
-    def respond_to_friend_request(self, request_id: str, accept: bool, user_email: str) -> Dict[str, Any]:
+    async def respond_to_friend_request(self, request_id: str, accept: bool, user_email: str) -> Dict[str, Any]:
         """Accept or reject a friend request."""
         try:
-            user = self.user_repo.get_by_email(user_email)
+            user = await self.user_repo.get_by_email(user_email)
             if not user:
                 return {"success": False, "error": "User not found"}
             
-            request = self.friend_repo.get_request_by_id(request_id)
+            request = await self.friend_repo.get_request_by_id(request_id)
             if not request:
                 return {"success": False, "error": "Friend request not found"}
             
@@ -58,7 +58,7 @@ class FriendRequestService:
                 return {"success": False, "error": "Friend request is no longer pending"}
             
             status = "accepted" if accept else "rejected"
-            success = self.friend_repo.update_friend_request_status(request_id, status)
+            success = await self.friend_repo.update_friend_request_status(request_id, status)
             
             if success:
                 return {"success": True, "message": f"Friend request {status}"}
@@ -68,20 +68,20 @@ class FriendRequestService:
             self.logger.error(f"Error responding to friend request: {str(e)}")
             return {"success": False, "error": "Failed to respond to friend request"}
 
-    def get_friend_requests(self, user_email: str) -> Dict[str, List[FriendRequestWithProfile]]:
+    async def get_friend_requests(self, user_email: str) -> Dict[str, List[FriendRequestWithProfile]]:
         """Get all friend requests for a user (both sent and received)."""
         try:
-            user = self.user_repo.get_by_email(user_email)
+            user = await self.user_repo.get_by_email(user_email)
             if not user:
                 return {"received": [], "sent": []}
             
-            requests = self.friend_repo.get_requests_for_user(user_email, status="pending")
+            requests = await self.friend_repo.get_requests_for_user(user_email, status="pending")
             received_requests = []
             sent_requests = []
             
             for request in requests:
-                sender = self.user_repo.get_by_email(request["sender_id"])
-                receiver = self.user_repo.get_by_email(request["receiver_id"])
+                sender = await self.user_repo.get_by_email(request["sender_id"])
+                receiver = await self.user_repo.get_by_email(request["receiver_id"])
                 
                 if not sender or not receiver:
                     continue
@@ -109,14 +109,14 @@ class FriendRequestService:
             self.logger.error(f"Error getting friend requests: {str(e)}")
             return {"received": [], "sent": []}
 
-    def cancel_friend_request(self, request_id: str, user_email: str) -> Dict[str, Any]:
+    async def cancel_friend_request(self, request_id: str, user_email: str) -> Dict[str, Any]:
         """Cancel a sent friend request."""
         try:
-            user = self.user_repo.get_by_email(user_email)
+            user = await self.user_repo.get_by_email(user_email)
             if not user:
                 return {"success": False, "error": "User not found"}
             
-            request = self.friend_repo.get_request_by_id(request_id)
+            request = await self.friend_repo.get_request_by_id(request_id)
             if not request:
                 return {"success": False, "error": "Friend request not found"}
             
@@ -126,7 +126,7 @@ class FriendRequestService:
             if request["status"] != "pending":
                 return {"success": False, "error": "Can only cancel pending requests"}
             
-            success = self.friend_repo.delete_friend_request(request_id)
+            success = await self.friend_repo.delete_friend_request(request_id)
             if success:
                 return {"success": True, "message": "Friend request cancelled"}
             return {"success": False, "error": "Failed to cancel friend request"}

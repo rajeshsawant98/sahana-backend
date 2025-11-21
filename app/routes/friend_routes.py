@@ -34,7 +34,7 @@ async def send_friend_request(
     Note: receiver_id should be the email address of the user to send a request to
     """
     try:
-        result = friend_service.send_friend_request(
+        result = await friend_service.send_friend_request(
             sender_email=current_user["email"],
             receiver_id=request.receiver_id
         )
@@ -56,7 +56,7 @@ async def get_friend_requests(
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Get all friend requests for the current user (both sent and received)"""
     try:
-        requests = friend_service.get_friend_requests(current_user["email"])
+        requests = await friend_service.get_friend_requests(current_user["email"])
         return friend_service.format_friend_requests_response(requests)
         
     except Exception as e:
@@ -69,7 +69,7 @@ async def accept_friend_request(
 ) -> Dict[str, str]:
     """Accept a friend request"""
     try:
-        result = friend_service.respond_to_friend_request(
+        result = await friend_service.respond_to_friend_request(
             request_id=request_id,
             accept=True,
             user_email=current_user["email"]
@@ -90,7 +90,7 @@ async def reject_friend_request(
 ) -> Dict[str, str]:
     """Reject a friend request"""
     try:
-        result = friend_service.respond_to_friend_request(
+        result = await friend_service.respond_to_friend_request(
             request_id=request_id,
             accept=False,
             user_email=current_user["email"]
@@ -111,7 +111,7 @@ async def cancel_friend_request(
 ) -> Dict[str, str]:
     """Cancel a sent friend request"""
     try:
-        result = friend_service.cancel_friend_request(
+        result = await friend_service.cancel_friend_request(
             request_id=request_id,
             user_email=current_user["email"]
         )
@@ -130,7 +130,7 @@ async def get_friends_list(
 ) -> List[FriendProfile]:
     """Get the list of friends for the current user"""
     try:
-        friends = friend_service.get_friends_list(current_user["email"])
+        friends = await friend_service.get_friends_list(current_user["email"])
         return friends
         
     except Exception as e:
@@ -144,7 +144,7 @@ async def search_users(
 ) -> List[Dict[str, Any]]:
     """Search for users to send friend requests"""
     try:
-        search_results = friend_service.search_users(
+        search_results = await friend_service.search_users(
             search_term=q,
             user_email=current_user["email"],
             limit=limit
@@ -163,7 +163,7 @@ async def get_friendship_status(
 ) -> Dict[str, str]:
     """Get the friendship status between current user and another user"""
     try:
-        result = friend_service.get_friendship_status(current_user["email"], user_id)
+        result = await friend_service.get_friendship_status(current_user["email"], user_id)
         
         if result["success"]:
             return {"friendship_status": result["friendship_status"]}

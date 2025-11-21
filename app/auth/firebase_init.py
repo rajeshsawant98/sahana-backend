@@ -19,4 +19,4 @@ def initialize_firebase():
 # Return Firestore client
 def get_firestore_client():
     initialize_firebase()
-    return firestore.client()
+    return firestore.AsyncClient()
