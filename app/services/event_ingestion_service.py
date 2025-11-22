@@ -129,7 +129,7 @@ async def ingest_ticketmaster_events_for_all_cities() -> dict:
 
 
         # 3. Ingest into Firestore (with deduplication)
-        result = ingest_bulk_events(events)
+        result = await ingest_bulk_events(events)
         total_events += result["saved"]
         summary.append(f"{result['saved']} new events for {city}, {state}")
 
