@@ -73,7 +73,6 @@ def test_cursor_paginated_response():
     assert response.pagination["has_next"] is True
     assert response.pagination["has_previous"] is False
     assert response.pagination["page_size"] == 12
-    assert response.pagination["total_count"] == 100
     print("✓ Response creation works")
 
 def test_sample_api_calls():

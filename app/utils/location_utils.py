@@ -5,7 +5,7 @@ from app.auth.firebase_init import get_firestore_client
 from typing import List, Tuple
 
 
-def get_unique_user_locations() -> List[Tuple[str, str]]:
+async def get_unique_user_locations() -> List[Tuple[str, str]]:
     """
     Get unique city/state combinations from user locations in Firestore.
     Used for targeted event ingestion.
@@ -18,7 +18,7 @@ def get_unique_user_locations() -> List[Tuple[str, str]]:
     users = users_ref.stream()
 
     cities = set()
-    for user in users:
+    async for user in users:
         data = user.to_dict()
         loc = data.get("location", {})
         if not isinstance(loc, dict):

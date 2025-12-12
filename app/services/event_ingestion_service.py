@@ -46,6 +46,11 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
     return filtered
 
 
+async def fetch_ticketmaster_events_async(city: str, state: str) -> List[dict]:
+    """Async wrapper so callers can await Ticketmaster fetches."""
+    return await asyncio.to_thread(fetch_ticketmaster_events, city, state)
+
+
 # --- Ingestion Logic ---
 
 async def ingest_event(event: dict) -> bool:
@@ -81,12 +86,14 @@ async def ingest_events_for_all_cities() -> dict:
     summary = []
     url_cache = load_url_cache()
 
-    for city, state in get_unique_user_locations():
+    locations = await get_unique_user_locations()
+
+    for city, state in locations:
         events = []
 
-        # 1. Fetch from Ticketmaster (sync, run in thread)
+        # 1. Fetch from Ticketmaster (sync wrapped for async use)
         try:
-            tm_events = await asyncio.to_thread(fetch_ticketmaster_events, city, state)
+            tm_events = await fetch_ticketmaster_events_async(city, state)
             events.extend(tm_events)
         except Exception as e:
             print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")
@@ -110,19 +117,25 @@ async def ingest_events_for_all_cities() -> dict:
             total_events += result["saved"]
             
     save_url_cache(url_cache)
-    return {"total_ingested": total_events, "details": summary}
+    return {
+        "total_ingested": total_events,
+        "processed_cities": len(summary),
+        "details": summary
+    }
     
 
 async def ingest_ticketmaster_events_for_all_cities() -> dict:
     total_events = 0
     summary = []
 
-    for city, state in get_unique_user_locations():
+    locations = await get_unique_user_locations()
+
+    for city, state in locations:
         events = []
 
-        # 1. Fetch from Ticketmaster (sync)
+        # 1. Fetch from Ticketmaster (sync wrapped for async use)
         try:
-            tm_events = fetch_ticketmaster_events(city, state)
+            tm_events = await fetch_ticketmaster_events_async(city, state)
             events.extend(tm_events)
         except Exception as e:
             print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")

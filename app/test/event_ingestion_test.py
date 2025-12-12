@@ -30,8 +30,8 @@ def show_sample_ticketmaster_events(city="Tempe", state="AZ"):
         print("-" * 60)
 
 
-def show_all_user_locations():
-    locations = get_unique_user_locations()
+async def show_all_user_locations():
+    locations = await get_unique_user_locations()
     print(f"\n🔍 Total Unique Locations: {len(locations)}\n")
 
     for i, loc in enumerate(locations, 1):
@@ -46,19 +46,20 @@ def show_all_user_locations():
 def run_ingestion_for_all_cities():
     result = asyncio.run(ingest_events_for_all_cities())
     print(f"\n✅ Ingestion Summary")
-    print(f"Total Events Saved    : {result['total_events']}")
-    print(f"Total Cities Processed: {result['processed_cities']}")
+    print(f"Total Events Saved    : {result.get('total_ingested')}")
+    if "processed_cities" in result:
+        print(f"Total Cities Processed: {result.get('processed_cities')}")
     print("\nDetails:")
-    for detail in result["summary"]:
+    for detail in result.get("details", result.get("summary", [])):
         print(f"• {detail}")
 
 
-def backfill_user_events_metadata():
+async def backfill_user_events_metadata():
     db = get_firestore_client()
     events_ref = db.collection("events")
 
     updated_count = 0
-    for doc in events_ref.stream():
+    async for doc in events_ref.stream():
         data = doc.to_dict()
 
         if "origin" not in data or "source" not in data:
@@ -66,24 +67,24 @@ def backfill_user_events_metadata():
                 "origin": data.get("origin", "community"),
                 "source": data.get("source", "user")
             }
-            events_ref.document(doc.id).update(updates)
+            await events_ref.document(doc.id).update(updates)
             updated_count += 1
 
     print(f"✅ Backfilled {updated_count} user events with origin/source")
 
 
-def migrate_ticketmaster_events():
+async def migrate_ticketmaster_events():
     db = get_firestore_client()
     old_ref = db.collection("ticketmasterEvents")
     new_ref = db.collection("events")
 
     migrated = 0
-    for doc in old_ref.stream():
+    async for doc in old_ref.stream():
         data = doc.to_dict()
         data["origin"] = "external"
         data["source"] = "ticketmaster"
         data["originalId"] = data.get("eventId")
-        new_ref.document(data["eventId"]).set(data)
+        await new_ref.document(data["eventId"]).set(data)
         migrated += 1
 
     print(f"✅ {migrated} Ticketmaster events migrated to unified 'events' collection.")
@@ -149,7 +150,7 @@ async def test_eventbrite_archive_fields():
         print(f"❌ Error testing Eventbrite events: {e}")
 
 
-def backfill_archive_fields():
+async def backfill_archive_fields():
     """Backfill archive fields for existing events that don't have them"""
     db = get_firestore_client()
     events_ref = db.collection("events")
@@ -157,7 +158,7 @@ def backfill_archive_fields():
     updated_count = 0
     total_checked = 0
     
-    for doc in events_ref.stream():
+    async for doc in events_ref.stream():
         total_checked += 1
         data = doc.to_dict()
         
@@ -172,7 +173,7 @@ def backfill_archive_fields():
                 "archivedBy": data.get("archivedBy", None),
                 "archiveReason": data.get("archiveReason", None)
             }
-            events_ref.document(doc.id).update(updates)
+            await events_ref.document(doc.id).update(updates)
             updated_count += 1
             print(f"✅ Updated event: {data.get('eventName', 'Unnamed Event')} (Missing: {missing_fields})")
     
@@ -188,10 +189,10 @@ if __name__ == "__main__":
     #show_sample_ticketmaster_events("Tempe", "AZ")
     #test_archive_fields_in_parsed_events()
     #asyncio.run(test_eventbrite_archive_fields())
-    #show_all_user_locations()
+    #asyncio.run(show_all_user_locations())
     run_ingestion_for_all_cities()
-    # backfill_user_events_metadata()
-    # migrate_ticketmaster_events()
+    # asyncio.run(backfill_user_events_metadata())
+    # asyncio.run(migrate_ticketmaster_events())
     #delete_old_events()  # This will delete events older than 1 year
-    # backfill_archive_fields()
+    # asyncio.run(backfill_archive_fields())
     pass
