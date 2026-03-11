@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.auth import auth_router  # Import the auth router
@@ -5,9 +6,18 @@ from app.routes.event_routes import event_router  # Import the event router
 from app.routes.admin_routes import admin_router  # Import the admin router
 from app.routes.ingestion_routes import ingestion_router
 from app.routes.friend_routes import friend_router  # Import the friend router
+from app.utils.redis_client import init_redis, close_redis
 import uvicorn
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_redis()
+    yield
+    await close_redis()
+
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "https://sahana-drab.vercel.app",  # Deployed frontend

@@ -1,9 +1,12 @@
+import json
 from app.repositories.events import EventRepositoryManager
 from app.services.event_rsvp_service import EventRsvpService
 from app.services.user_service import validate_user_emails
 from app.models.pagination import EventFilters, CursorPaginationParams, EventCursorPaginatedResponse
 from app.utils.logger import get_service_logger
 from app.utils.event_validators import EventValidator
+from app.utils.redis_client import get_redis_client
+from app.utils.cache_keys import event_query_cache_key, TTL_EVENT_QUERY
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -13,9 +16,28 @@ event_rsvp_service = EventRsvpService()
 event_repo = EventRepositoryManager()
 logger = get_service_logger(__name__)
 
+async def flush_event_query_cache() -> None:
+    redis = get_redis_client()
+    if redis is None:
+        return
+    try:
+        pattern = "sahana:events:q:*"
+        cursor = 0
+        while True:
+            cursor, keys = await redis.scan(cursor, match=pattern, count=100)
+            if keys:
+                await redis.delete(*keys)
+            if cursor == 0:
+                break
+    except Exception as e:
+        logger.warning(f"Could not flush event query cache: {e}")
+
+
 async def create_event(data: dict):
     try:
-        return await event_repo.create_event(data)
+        result = await event_repo.create_event(data)
+        await flush_event_query_cache()
+        return result
     except Exception as e:
         logger.error(f"Error in create_event: {e}", exc_info=True)
         return None
@@ -36,14 +58,18 @@ async def get_all_events():
 
 async def update_event(event_id: str, update_data: dict):
     try:
-        return await event_repo.update_event(event_id, update_data)
+        result = await event_repo.update_event(event_id, update_data)
+        await flush_event_query_cache()
+        return result
     except Exception as e:
         logger.error(f"Error in update_event: {e}", exc_info=True)
         return False
 
 async def delete_event(event_id: str):
     try:
-        return await event_repo.delete_event(event_id)
+        result = await event_repo.delete_event(event_id)
+        await flush_event_query_cache()
+        return result
     except Exception as e:
         logger.error(f"Error in delete_event: {e}", exc_info=True)
         return False
@@ -132,7 +158,9 @@ async def delete_old_events() -> int:
 
 async def archive_event(event_id: str, archived_by: str, reason: str = "Event archived") -> bool:
     try:
-        return await event_repo.archive_event(event_id, archived_by, reason)
+        result = await event_repo.archive_event(event_id, archived_by, reason)
+        await flush_event_query_cache()
+        return result
     except Exception as e:
         logger.error(f"Error in archive_event: {e}", exc_info=True)
         return False
@@ -200,9 +228,24 @@ def is_event_past(event: dict) -> bool:
         return False
 
 async def get_all_events_paginated(cursor_params: CursorPaginationParams, filters: Optional[EventFilters] = None) -> EventCursorPaginatedResponse:
+    redis = get_redis_client()
+    cache_key = event_query_cache_key(
+        cursor_params.model_dump() if hasattr(cursor_params, "model_dump") else vars(cursor_params),
+        filters.model_dump() if filters and hasattr(filters, "model_dump") else (vars(filters) if filters else {}),
+    )
+
+    if redis is not None:
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                logger.debug(f"[EventCache] hit {cache_key}")
+                return EventCursorPaginatedResponse(**json.loads(cached))
+        except Exception:
+            pass
+
     try:
         events, next_cursor, prev_cursor, has_next, has_previous = await event_repo.get_all_events_paginated(cursor_params, filters)
-        return EventCursorPaginatedResponse.create(
+        response = EventCursorPaginatedResponse.create(
             items=events,
             next_cursor=next_cursor,
             prev_cursor=prev_cursor,
@@ -210,6 +253,14 @@ async def get_all_events_paginated(cursor_params: CursorPaginationParams, filter
             has_previous=has_previous,
             page_size=cursor_params.page_size
         )
+
+        if redis is not None:
+            try:
+                await redis.set(cache_key, response.model_dump_json(), ex=TTL_EVENT_QUERY)
+            except Exception:
+                pass
+
+        return response
     except Exception as e:
         logger.error(f"Error in get_all_events_paginated: {e}", exc_info=True)
         return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
