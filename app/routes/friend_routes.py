@@ -155,6 +155,31 @@ async def search_users(
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to search users: {str(e)}")
 
+
+@friend_router.get("/recommendations")
+async def get_friend_recommendations(
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of recommendations"),
+    radius_km: float = Query(25.0, gt=0, le=200, description="Max distance in KM (requires user + candidate coords)"),
+    min_common_interests: int = Query(1, ge=0, le=10, description="Filter out candidates with fewer shared interests"),
+    current_user: dict = Depends(user_only),
+) -> List[Dict[str, Any]]:
+    """Ranked recommendations for Find Friends (MVP).
+
+    Scoring signals:
+    - shared interests
+    - distance (if both users have lat/lon)
+    - shared *attended* categories (based on nearby events; best-effort)
+    """
+    try:
+        return await friend_service.get_friend_recommendations(
+            user_email=current_user["email"],
+            limit=limit,
+            radius_km=radius_km,
+            min_common_interests=min_common_interests,
+        )
+    except Exception as e:
+        raise HTTPExceptionHelper.server_error(f"Failed to get friend recommendations: {str(e)}")
+
 # Additional utility endpoint for getting friendship status between two users
 @friend_router.get("/status/{user_id}")
 async def get_friendship_status(

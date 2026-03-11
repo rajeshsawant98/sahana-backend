@@ -9,8 +9,7 @@ from .user import (
     GoogleUserCreate, 
     UserLoginRequest, 
     UserLoginResponse,
-    UserLoginResponseLegacy, 
-    PaginatedUsersResponse, 
+    PaginatedUsersResponse,
     UserStatsResponse,
     Location,
     UserRole

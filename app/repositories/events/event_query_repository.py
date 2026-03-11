@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from google.cloud.firestore_v1 import Query, CollectionReference
+from google.cloud.firestore_v1.base_query import FieldFilter
 from ..base_repository import BaseRepository
 from app.models.pagination import EventFilters, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
@@ -35,12 +36,12 @@ class EventQueryRepository(BaseRepository):
         """Get events in a specific city and state (both manual and external)"""
         try:
             # Use single filter approach to avoid Firestore inequality limitations
-            query = self.collection.where("location.city", "==", city)
-            
+            query = self.collection.where(filter=FieldFilter("location.city", "==", city))
+
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
-                if (event_data is not None and 
+                if (event_data is not None and
                     event_data.get("isArchived") != True and
                     (event_data.get("origin") in ["manual", "external"]) and  # Include both manual and external
                     (not state or event_data.get("location", {}).get("state") == state)):
@@ -57,12 +58,12 @@ class EventQueryRepository(BaseRepository):
         """Get external (scraped) events in a specific city and state"""
         try:
             # Use single filter approach to avoid Firestore inequality limitations
-            query = self.collection.where("location.city", "==", city)
-            
+            query = self.collection.where(filter=FieldFilter("location.city", "==", city))
+
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
-                if (event_data is not None and 
+                if (event_data is not None and
                     event_data.get("isArchived") != True and
                     event_data.get("origin") == "external" and  # Changed from "scraped" to "external"
                     (not state or event_data.get("location", {}).get("state") == state)):
@@ -80,7 +81,7 @@ class EventQueryRepository(BaseRepository):
         """Get events that should be archived (ended events)"""
         try:
             # Fetch all non-archived events (let service filter which are past)
-            query = self.collection.where("isArchived", "!=", True)
+            query = self.collection.where(filter=FieldFilter("isArchived", "!=", True))
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
@@ -100,7 +101,7 @@ class EventQueryRepository(BaseRepository):
             today_start = datetime.combine(today, datetime.min.time())
             
             # Get events that ended before today
-            query = self.collection.where("endTime", "<", today_start)
+            query = self.collection.where(filter=FieldFilter("endTime", "<", today_start))
             docs = await query.get()
             
             deleted_count = 0
@@ -271,37 +272,37 @@ class EventQueryRepository(BaseRepository):
         # Priority 1: Location filters (city + state) - Use existing indexes when possible
         if filters.city and filters.state:
             # Use existing: location.city + location.state + startTime + isArchived index (close match)
-            query = query.where("location.city", "==", filters.city)
-            query = query.where("location.state", "==", filters.state)
+            query = query.where(filter=FieldFilter("location.city", "==", filters.city))
+            query = query.where(filter=FieldFilter("location.state", "==", filters.state))
         elif filters.state:
             # Uses existing: isArchived + location.state + startTime index ✅
-            query = query.where("location.state", "==", filters.state)
+            query = query.where(filter=FieldFilter("location.state", "==", filters.state))
         elif filters.city:
             # Note: Need to create isArchived + location.city + startTime + __name__ index
             # For now, this will fail with missing index error - user needs to create index
-            query = query.where("location.city", "==", filters.city)
-        
-        # Priority 2: Online status filter  
+            query = query.where(filter=FieldFilter("location.city", "==", filters.city))
+
+        # Priority 2: Online status filter
         if filters.is_online is not None:
             # Uses existing: isArchived + isOnline + startTime index ✅
-            query = query.where("isOnline", "==", filters.is_online)
-        
+            query = query.where(filter=FieldFilter("isOnline", "==", filters.is_online))
+
         # Priority 3: Creator email filter
         if filters.creator_email:
             # Uses existing: createdByEmail + isArchived + startTime index ✅
-            query = query.where("createdByEmail", "==", filters.creator_email)
-        
+            query = query.where(filter=FieldFilter("createdByEmail", "==", filters.creator_email))
+
         # Priority 4: Category filter - Will need index creation
         if filters.category:
             # Note: Need to create isArchived + categories + startTime + __name__ index
             # For now, this will fail with missing index error - user needs to create index
-            query = query.where("categories", "array_contains", filters.category)
-        
+            query = query.where(filter=FieldFilter("categories", "array_contains", filters.category))
+
         # Priority 5: Date range filters (these work with existing startTime indexes)
         if filters.start_date:
-            query = query.where("startTime", ">=", filters.start_date)
+            query = query.where(filter=FieldFilter("startTime", ">=", filters.start_date))
         if filters.end_date:
-            query = query.where("startTime", "<=", filters.end_date)
+            query = query.where(filter=FieldFilter("startTime", "<=", filters.end_date))
         
         return query
 
@@ -318,9 +319,9 @@ class EventQueryRepository(BaseRepository):
             # Build query with location filters
             query = self.collection.limit(1000000)
             query = self._apply_non_archived_filter(query)
-            query = query.where("location.city", "==", city)
+            query = query.where(filter=FieldFilter("location.city", "==", city))
             if state:
-                query = query.where("location.state", "==", state)
+                query = query.where(filter=FieldFilter("location.state", "==", state))
             
             # Apply cursor-based filtering and sorting
             query = self._apply_cursor_filters(query, cursor_info, cursor_params.direction)
@@ -404,10 +405,10 @@ class EventQueryRepository(BaseRepository):
             # Build query with location and origin filters
             query = self.collection.limit(1000000)
             query = self._apply_non_archived_filter(query)
-            query = query.where("location.city", "==", city)
-            query = query.where("origin", "==", "external")
+            query = query.where(filter=FieldFilter("location.city", "==", city))
+            query = query.where(filter=FieldFilter("origin", "==", "external"))
             if state:
-                query = query.where("location.state", "==", state)
+                query = query.where(filter=FieldFilter("location.state", "==", state))
             
             # Apply cursor-based filtering and sorting
             query = self._apply_cursor_filters(query, cursor_info, cursor_params.direction)

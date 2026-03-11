@@ -2,7 +2,10 @@
 Location utilities for event ingestion
 """
 from app.auth.firebase_init import get_firestore_client
+from app.utils.logger import get_logger
 from typing import List, Tuple
+
+logger = get_logger(__name__)
 
 
 async def get_unique_user_locations() -> List[Tuple[str, str]]:
@@ -22,7 +25,7 @@ async def get_unique_user_locations() -> List[Tuple[str, str]]:
         data = user.to_dict()
         loc = data.get("location", {})
         if not isinstance(loc, dict):
-            print(f"[DEBUG] Unexpected location type: {type(loc)} value: {loc}")
+            logger.debug(f"Unexpected location type: {type(loc)} value: {loc}")
         city = loc.get("city") if isinstance(loc, dict) else None
         state = loc.get("state") if isinstance(loc, dict) else None
         if city and state:

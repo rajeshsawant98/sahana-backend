@@ -1,6 +1,7 @@
 from ..base_repository import BaseRepository
 from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
+from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 from typing import Tuple, List, Dict, Any, Optional
 
@@ -14,7 +15,7 @@ class EventUserRepository(BaseRepository):
     async def get_events_by_creator(self, email: str) -> List[Dict[str, Any]]:
         """Get all events created by a specific user"""
         try:
-            query = self.collection.where("createdByEmail", "==", email)
+            query = self.collection.where(filter=FieldFilter("createdByEmail", "==", email))
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
@@ -46,8 +47,8 @@ class EventUserRepository(BaseRepository):
             
             # Build base query filtering by creator and excluding archived events
             query = (self.collection
-                    .where("createdByEmail", "==", email)
-                    .where("isArchived", "!=", True))
+                    .where(filter=FieldFilter("createdByEmail", "==", email))
+                    .where(filter=FieldFilter("isArchived", "!=", True)))
             
             # Apply sorting and cursor positioning
             query = query.order_by('startTime').order_by('eventId')
@@ -103,7 +104,7 @@ class EventUserRepository(BaseRepository):
     async def get_events_organized_by_user(self, user_email: str) -> List[Dict[str, Any]]:
         """Get events organized by a specific user"""
         try:
-            query = self.collection.where("organizers", "array_contains", user_email)
+            query = self.collection.where(filter=FieldFilter("organizers", "array_contains", user_email))
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
@@ -122,8 +123,8 @@ class EventUserRepository(BaseRepository):
         """Get events organized by user using cursor-based pagination"""
         try:
             query = (self.collection
-                    .where("organizers", "array_contains", user_email)
-                    .where("isArchived", "!=", True))
+                    .where(filter=FieldFilter("organizers", "array_contains", user_email))
+                    .where(filter=FieldFilter("isArchived", "!=", True)))
             
             query = query.order_by('startTime').order_by('eventId')
             
@@ -169,7 +170,7 @@ class EventUserRepository(BaseRepository):
     async def get_events_moderated_by_user(self, user_email: str) -> List[Dict[str, Any]]:
         """Get events moderated by a specific user"""
         try:
-            query = self.collection.where("moderators", "array_contains", user_email)
+            query = self.collection.where(filter=FieldFilter("moderators", "array_contains", user_email))
             events = []
             async for doc in query.stream():
                 event_data = doc.to_dict()
@@ -188,8 +189,8 @@ class EventUserRepository(BaseRepository):
         """Get events moderated by user using cursor-based pagination"""
         try:
             query = (self.collection
-                    .where("moderators", "array_contains", user_email)
-                    .where("isArchived", "!=", True))
+                    .where(filter=FieldFilter("moderators", "array_contains", user_email))
+                    .where(filter=FieldFilter("isArchived", "!=", True)))
             
             query = query.order_by('startTime').order_by('eventId')
             

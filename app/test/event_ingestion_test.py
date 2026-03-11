@@ -3,9 +3,9 @@ import asyncio
 import pytest
 from app.services.event_ingestion_service import (
     fetch_ticketmaster_events,
-    get_unique_user_locations,
     ingest_events_for_all_cities
 )
+from app.utils.location_utils import get_unique_user_locations
 from app.auth.firebase_init import get_firestore_client
 
 
@@ -183,14 +183,29 @@ async def backfill_archive_fields():
     print(f"Events already had archive fields: {total_checked - updated_count}")
 
 
-if __name__ == "__main__":
-    # Uncomment the task you want to test
+async def test_eventbrite_scraper(city="Tempe", state="AZ"):
+    from app.scrapers.eventbrite_scraper_async import scrape_eventbrite_async
+    print(f"\n🔍 Testing Eventbrite scraper for {city}, {state}")
+    events = await scrape_eventbrite_async(city=city, state=state, max_scrolls=3)
+    print(f"\n✅ Scraped {len(events)} events")
+    for i, e in enumerate(events[:3], 1):
+        print(f"\n📌 Event #{i}: {e.get('eventName')}")
+        print(f"   Date     : {e.get('startTime')}")
+        print(f"   Venue    : {e.get('location', {}).get('name')}")
+        print(f"   City     : {e.get('location', {}).get('city')}, {e.get('location', {}).get('state')}")
+        print(f"   Categories: {e.get('categories')}")
+        print(f"   Online?  : {e.get('isOnline')}")
+        print(f"   Image    : {e.get('imageUrl', '')[:60]}")
 
+
+if __name__ == "__main__":
+    # Uncomment the task you want to run
+
+    run_ingestion_for_all_cities()
+    #asyncio.run(test_eventbrite_scraper("Tempe", "AZ"))
     #show_sample_ticketmaster_events("Tempe", "AZ")
     #test_archive_fields_in_parsed_events()
-    #asyncio.run(test_eventbrite_archive_fields())
     #asyncio.run(show_all_user_locations())
-    run_ingestion_for_all_cities()
     # asyncio.run(backfill_user_events_metadata())
     # asyncio.run(migrate_ticketmaster_events())
     #delete_old_events()  # This will delete events older than 1 year

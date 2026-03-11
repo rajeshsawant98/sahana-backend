@@ -31,12 +31,16 @@ class UserDiscoveryService:
                     friendship_status = "friends"
                 else:
                     # Check for pending requests
-                    pending_request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
+                    pending_request = await self.friend_repo.find_request_between_users(
+                        user_email,
+                        user_data.get("email", ""),
+                        ["pending"],
+                    )
                     if pending_request:
                         if pending_request["sender_id"] == user_email:
-                            friendship_status = "request_sent"
+                            friendship_status = "pending_sent"
                         else:
-                            friendship_status = "request_received"
+                            friendship_status = "pending_received"
                     else:
                         friendship_status = "none"
                 

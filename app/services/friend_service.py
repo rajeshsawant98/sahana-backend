@@ -1,6 +1,7 @@
 from app.services.friend_request_service import FriendRequestService
 from app.services.friend_management_service import FriendManagementService
 from app.services.user_discovery_service import UserDiscoveryService
+from app.services.friend_recommendation_service import FriendRecommendationService
 from app.repositories.friends import FriendRepository
 from app.repositories.users import UserRepository
 from app.models.friend import FriendRequestWithProfile, FriendProfile, UserSearchResult
@@ -21,6 +22,7 @@ class FriendService:
         self.friend_request_service = FriendRequestService(friend_repo_instance, user_repo)
         self.friend_management_service = FriendManagementService(friend_repo_instance, user_repo)
         self.user_discovery_service = UserDiscoveryService(friend_repo_instance, user_repo)
+        self.friend_recommendation_service = FriendRecommendationService(friend_repo_instance, user_repo)
         self.logger = get_service_logger(__name__)
 
     # Friend Request Operations (delegate to FriendRequestService)
@@ -65,6 +67,36 @@ class FriendService:
     async def get_user_suggestions(self, user_email: str, limit: int = 10) -> List[UserSearchResult]:
         """Get friend suggestions based on mutual friends, interests, etc."""
         return await self.user_discovery_service.get_user_suggestions(user_email, limit)
+
+    async def get_friend_recommendations(
+        self,
+        user_email: str,
+        limit: int = 20,
+        radius_km: float = 25.0,
+        min_common_interests: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Ranked recommendations for Find Friends (MVP)."""
+        return await self.friend_recommendation_service.recommend(
+            user_email=user_email,
+            limit=limit,
+            radius_km=radius_km,
+            min_common_interests=min_common_interests,
+        )
+
+    async def recommend_friends(
+        self,
+        user_email: str,
+        limit: int = 20,
+        radius_km: float = 25.0,
+        min_common_interests: int = 1,
+    ) -> List[Dict[str, Any]]:
+        """Ranked friend recommendations for Find Friends."""
+        return await self.friend_recommendation_service.recommend(
+            user_email=user_email,
+            limit=limit,
+            radius_km=radius_km,
+            min_common_interests=min_common_interests,
+        )
 
     # Data Transformation Methods (centralized response formatting)
     def format_friend_requests_response(self, requests: Dict[str, List[FriendRequestWithProfile]]) -> Dict[str, List[Dict[str, Any]]]:

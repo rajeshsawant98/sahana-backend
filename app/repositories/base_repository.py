@@ -1,6 +1,7 @@
 from datetime import datetime
 from google.cloud.firestore_v1 import Query, CollectionReference
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from app.auth.firebase_init import get_firestore_client
 from app.models.pagination import EventFilters, CursorInfo, CursorPaginationParams
 from app.utils.logger import get_repository_logger
@@ -28,14 +29,14 @@ class BaseRepository:
     def _apply_non_archived_filter(self, query: Query) -> Query:
         """Apply non-archived filter - use this method separately when needed"""
         # Filter for events where isArchived is false
-        return query.where("isArchived", "==", False)
+        return query.where(filter=FieldFilter("isArchived", "==", False))
 
     def _apply_location_filters(self, query: Query, city: Optional[str] = None, state: Optional[str] = None) -> Query:
         """Apply location-based filters"""
         if city:
-            query = query.where("location.city", "==", city)
+            query = query.where(filter=FieldFilter("location.city", "==", city))
         if state:
-            query = query.where("location.state", "==", state)
+            query = query.where(filter=FieldFilter("location.state", "==", state))
         return query
 
     def _apply_user_filters(self, query: Query, creator_email: Optional[str] = None, user_email: Optional[str] = None, 
@@ -43,13 +44,13 @@ class BaseRepository:
                            rsvp_email: Optional[str] = None) -> Query:
         """Apply user-related filters"""
         if creator_email:
-            query = query.where("createdByEmail", "==", creator_email)
+            query = query.where(filter=FieldFilter("createdByEmail", "==", creator_email))
         if organizer_email:
-            query = query.where("organizers", "array_contains", organizer_email)
+            query = query.where(filter=FieldFilter("organizers", "array_contains", organizer_email))
         if moderator_email:
-            query = query.where("moderators", "array_contains", moderator_email)
+            query = query.where(filter=FieldFilter("moderators", "array_contains", moderator_email))
         if rsvp_email:
-            query = query.where("rsvpList", "array_contains", rsvp_email)
+            query = query.where(filter=FieldFilter("rsvpList", "array_contains", rsvp_email))
         return query
 
     def _apply_event_filters(self, query: Query, filters: Optional[EventFilters] = None) -> Query:
@@ -58,33 +59,33 @@ class BaseRepository:
             return query
             
         if filters.city:
-            query = query.where("location.city", "==", filters.city)
+            query = query.where(filter=FieldFilter("location.city", "==", filters.city))
         if filters.state:
-            query = query.where("location.state", "==", filters.state)
+            query = query.where(filter=FieldFilter("location.state", "==", filters.state))
         if filters.category:
-            query = query.where("categories", "array_contains", filters.category)
+            query = query.where(filter=FieldFilter("categories", "array_contains", filters.category))
         if filters.is_online is not None:
-            query = query.where("isOnline", "==", filters.is_online)
+            query = query.where(filter=FieldFilter("isOnline", "==", filters.is_online))
         if filters.creator_email:
-            query = query.where("createdByEmail", "==", filters.creator_email)
+            query = query.where(filter=FieldFilter("createdByEmail", "==", filters.creator_email))
         if filters.start_date:
-            query = query.where("startTime", ">=", filters.start_date)
+            query = query.where(filter=FieldFilter("startTime", ">=", filters.start_date))
         if filters.end_date:
-            query = query.where("startTime", "<=", filters.end_date)
+            query = query.where(filter=FieldFilter("startTime", "<=", filters.end_date))
         return query
 
     def _apply_origin_filter(self, query: Query, origin: Optional[str] = None) -> Query:
         """Apply origin filter (external, community, etc.)"""
         if origin:
-            query = query.where("origin", "==", origin)
+            query = query.where(filter=FieldFilter("origin", "==", origin))
         return query
 
     def _apply_archived_filter(self, query: Query, archived_only: bool = False, user_email: Optional[str] = None) -> Query:
         """Apply archived event filters"""
         if archived_only:
-            query = query.where("isArchived", "==", True)
+            query = query.where(filter=FieldFilter("isArchived", "==", True))
             if user_email:
-                query = query.where("createdByEmail", "==", user_email)
+                query = query.where(filter=FieldFilter("createdByEmail", "==", user_email))
         return query
 
     def _apply_sorting(self, query: Query, sort_by: str = "createdAt", direction: str = "DESCENDING") -> Query:
@@ -116,18 +117,18 @@ class BaseRepository:
             else:
                 # This handles the case where startTime >= cursor_start_time
                 # For events with same startTime, we'll filter by ID in the application layer
-                query = query.where("startTime", ">=", cursor_info.start_time)
+                query = query.where(filter=FieldFilter("startTime", ">=", cursor_info.start_time))
         else:  # direction == "prev"
             # Get events before cursor position - for backward pagination
             # We need to fetch a broader range and let application layer do precise filtering
             if cursor_info.start_time is None:
                 # If cursor startTime is None, there are no events before it (None comes first)
                 # Return an empty query that matches nothing
-                query = query.where("startTime", "<", "1900-01-01T00:00:00Z")  # Impossible condition
+                query = query.where(filter=FieldFilter("startTime", "<", "1900-01-01T00:00:00Z"))  # Impossible condition
             else:
                 # For backward pagination, get events with startTime < cursor OR 
                 # startTime = cursor (let app layer filter by eventId)
-                query = query.where("startTime", "<=", cursor_info.start_time)
+                query = query.where(filter=FieldFilter("startTime", "<=", cursor_info.start_time))
         return query
 
     async def get_by_id(self, doc_id: str) -> dict | None:

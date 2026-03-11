@@ -3,11 +3,13 @@ import requests
 import asyncio
 from typing import List
 from app.repositories.events import EventIngestionRepository
-from app.auth.firebase_init import get_firestore_client
 from app.utils.event_parser import ticketmaster_to_sahana_format
 from app.services.event_scraping_service import get_eventbrite_events
 from app.utils.cache_utils import load_url_cache, save_url_cache
 from app.utils.location_utils import get_unique_user_locations
+from app.utils.logger import get_service_logger
+
+logger = get_service_logger(__name__)
 
 # Repo is used for all DB operations
 repo = EventIngestionRepository()
@@ -33,7 +35,7 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
         response = requests.get(url, params=params)
         response.raise_for_status()
     except requests.RequestException as e:
-        print(f"[ERROR] Ticketmaster API error: {e}")
+        logger.error(f"Ticketmaster API error: {e}")
         return []
 
     data = response.json()
@@ -46,11 +48,6 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
     return filtered
 
 
-async def fetch_ticketmaster_events_async(city: str, state: str) -> List[dict]:
-    """Async wrapper so callers can await Ticketmaster fetches."""
-    return await asyncio.to_thread(fetch_ticketmaster_events, city, state)
-
-
 # --- Ingestion Logic ---
 
 async def ingest_event(event: dict) -> bool:
@@ -60,7 +57,7 @@ async def ingest_event(event: dict) -> bool:
 
     existing = await repo.get_by_original_id(original_id)
     if existing:
-        print(f"[SKIP] Event with originalId={original_id} already exists.")
+        logger.debug(f"Event with originalId={original_id} already exists, skipping.")
         return False
 
     return await repo.save_event(event)
@@ -93,17 +90,17 @@ async def ingest_events_for_all_cities() -> dict:
 
         # 1. Fetch from Ticketmaster (sync wrapped for async use)
         try:
-            tm_events = await fetch_ticketmaster_events_async(city, state)
+            tm_events = await asyncio.to_thread(fetch_ticketmaster_events, city, state)
             events.extend(tm_events)
         except Exception as e:
-            print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")
+            logger.error(f"Ticketmaster fetch failed for {city}, {state}: {e}")
 
         # 2. Fetch from Eventbrite (async)
         try:
             eb_events = await get_eventbrite_events(city, state, seen_links=url_cache)
             events.extend(eb_events)
         except Exception as e:
-            print(f"[ERROR] Eventbrite scraping failed for {city}, {state}: {e}")
+            logger.error(f"Eventbrite scraping failed for {city}, {state}: {e}")
 
         # 3. Ingest into Firestore (with deduplication)
         if events:
@@ -123,31 +120,3 @@ async def ingest_events_for_all_cities() -> dict:
         "details": summary
     }
     
-
-async def ingest_ticketmaster_events_for_all_cities() -> dict:
-    total_events = 0
-    summary = []
-
-    locations = await get_unique_user_locations()
-
-    for city, state in locations:
-        events = []
-
-        # 1. Fetch from Ticketmaster (sync wrapped for async use)
-        try:
-            tm_events = await fetch_ticketmaster_events_async(city, state)
-            events.extend(tm_events)
-        except Exception as e:
-            print(f"[ERROR] Ticketmaster fetch failed for {city}, {state}: {e}")
-
-
-        # 3. Ingest into Firestore (with deduplication)
-        result = await ingest_bulk_events(events)
-        total_events += result["saved"]
-        summary.append(f"{result['saved']} new events for {city}, {state}")
-
-    return {
-        "total_events": total_events,
-        "processed_cities": len(summary),
-        "summary": summary
-    }

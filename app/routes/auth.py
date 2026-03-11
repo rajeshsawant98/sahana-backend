@@ -27,9 +27,11 @@ from app.auth.jwt_utils import (
 )
 from app.auth.roles import user_only
 from app.utils.http_exceptions import HTTPExceptionHelper
+from app.utils.logger import get_route_logger
 import os
 
 auth_router = APIRouter()
+logger = get_route_logger(__name__)
 
 # -------------------- Request Models --------------------
 
@@ -64,7 +66,6 @@ async def google_login(request: GoogleLoginRequest):
         role = user.get("role", "user")
 
         access_token = create_access_token(data={"email": user_data["email"], "role": role})
-        # logger.debug(f"access_token: {access_token}")  # Debug log commented out
         refresh_token = create_refresh_token(data={"email": user_data["email"], "role": role})
 
         return {
@@ -74,7 +75,7 @@ async def google_login(request: GoogleLoginRequest):
             "token_type": "bearer",
         }
     except Exception as e:
-        print(f"Google authentication error: {e}")
+        logger.error(f"Google authentication error: {e}")
         raise HTTPExceptionHelper.bad_request("Google login failed")
 
 # Normal Login

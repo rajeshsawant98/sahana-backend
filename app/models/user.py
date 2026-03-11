@@ -4,6 +4,26 @@ from datetime import datetime
 from enum import Enum
 from google.cloud import firestore  # Firestore library
 
+
+def _validate_interests(v, *, allow_none: bool = False):
+    if v is None:
+        return None if allow_none else []
+    if not isinstance(v, list):
+        raise ValueError("Interests must be a list")
+    for interest in v:
+        if not isinstance(interest, str) or not interest.strip():
+            raise ValueError("Each interest must be a non-empty string")
+    return list(set(interest.strip() for interest in v))
+
+
+def _validate_birthdate(v):
+    if v and v != "":
+        try:
+            datetime.strptime(v, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError("Birthdate must be in YYYY-MM-DD format")
+    return v
+
 class UserRole(str, Enum):
     USER = "user"
     ADMIN = "admin"
@@ -36,31 +56,11 @@ class User(BaseModel):
 
     @validator('interests', pre=True, always=True)
     def validate_interests(cls, v):
-        if v is None:
-            return []
-        
-        # Basic validation - ensure it's a list of strings
-        if not isinstance(v, list):
-            raise ValueError("Interests must be a list")
-        
-        # Validate each interest is a non-empty string
-        for interest in v:
-            if not isinstance(interest, str) or not interest.strip():
-                raise ValueError("Each interest must be a non-empty string")
-        
-        # Remove duplicates and trim whitespace
-        cleaned_interests = list(set(interest.strip() for interest in v))
-        
-        return cleaned_interests
+        return _validate_interests(v)
 
     @validator('birthdate')
     def validate_birthdate(cls, v):
-        if v and v != "":
-            try:
-                datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
-                raise ValueError("Birthdate must be in YYYY-MM-DD format")
-        return v
+        return _validate_birthdate(v)
 
     class Config:
         from_attributes = True
@@ -81,31 +81,11 @@ class UserCreate(BaseModel):
 
     @validator('interests', pre=True, always=True)
     def validate_interests(cls, v):
-        if v is None:
-            return []
-        
-        # Basic validation - ensure it's a list of strings
-        if not isinstance(v, list):
-            raise ValueError("Interests must be a list")
-        
-        # Validate each interest is a non-empty string
-        for interest in v:
-            if not isinstance(interest, str) or not interest.strip():
-                raise ValueError("Each interest must be a non-empty string")
-        
-        # Remove duplicates and trim whitespace
-        cleaned_interests = list(set(interest.strip() for interest in v))
-        
-        return cleaned_interests
+        return _validate_interests(v)
 
     @validator('birthdate')
     def validate_birthdate(cls, v):
-        if v and v != "":
-            try:
-                datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
-                raise ValueError("Birthdate must be in YYYY-MM-DD format")
-        return v
+        return _validate_birthdate(v)
 
 class UserUpdate(BaseModel):
     """Model for updating user profiles"""
@@ -118,33 +98,13 @@ class UserUpdate(BaseModel):
     interests: Optional[List[str]] = None
     location: Optional[Location] = None
 
-    @validator('interests', pre=True, allow_reuse=True)
+    @validator('interests', pre=True)
     def validate_interests(cls, v):
-        if v is None:
-            return v
-        
-        # Basic validation - ensure it's a list of strings
-        if not isinstance(v, list):
-            raise ValueError("Interests must be a list")
-        
-        # Validate each interest is a non-empty string
-        for interest in v:
-            if not isinstance(interest, str) or not interest.strip():
-                raise ValueError("Each interest must be a non-empty string")
-        
-        # Remove duplicates and trim whitespace
-        cleaned_interests = list(set(interest.strip() for interest in v))
-        
-        return cleaned_interests
+        return _validate_interests(v, allow_none=True)
 
-    @validator('birthdate', allow_reuse=True)
+    @validator('birthdate')
     def validate_birthdate(cls, v):
-        if v and v != "":
-            try:
-                datetime.strptime(v, "%Y-%m-%d")
-            except ValueError:
-                raise ValueError("Birthdate must be in YYYY-MM-DD format")
-        return v
+        return _validate_birthdate(v)
 
 class UserResponse(BaseModel):
     """Model for API responses (excludes password)"""
@@ -205,13 +165,6 @@ class UserLoginResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     email: EmailStr
-
-class UserLoginResponseLegacy(BaseModel):
-    """Legacy model with full user data - for backward compatibility if needed"""
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    user: UserResponse
 
 class PaginatedUsersResponse(BaseModel):
     """Model for paginated user responses"""

@@ -1,5 +1,6 @@
 from datetime import datetime
 from google.cloud.firestore_v1 import Query, CollectionReference
+from google.cloud.firestore_v1.base_query import FieldFilter
 from ..base_repository import BaseRepository
 from app.models.pagination import PaginationParams, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_repository_logger
@@ -65,7 +66,7 @@ class EventArchiveRepository(BaseRepository):
             # Use single filter approach to avoid Firestore issues
             if user_email:
                 # If filtering by user, start with that filter
-                query = self.collection.where("createdByEmail", "==", user_email)
+                query = self.collection.where(filter=FieldFilter("createdByEmail", "==", user_email))
                 
                 # Get all docs and filter for archived events in Python
                 events = []
@@ -75,7 +76,7 @@ class EventArchiveRepository(BaseRepository):
                         events.append(event_data)
             else:
                 # If not filtering by user, filter by archived status only
-                query = self.collection.where("isArchived", "==", True)
+                query = self.collection.where(filter=FieldFilter("isArchived", "==", True))
                 
                 events = []
                 async for doc in query.stream():
@@ -116,11 +117,11 @@ class EventArchiveRepository(BaseRepository):
             self.logger.info(f"Getting cursor-paginated archived events (user: {user_email})")
             
             # Build base query for archived events
-            query = self.collection.where("isArchived", "==", True)
-            
+            query = self.collection.where(filter=FieldFilter("isArchived", "==", True))
+
             # Add user filter if specified
             if user_email:
-                query = query.where("createdByEmail", "==", user_email)
+                query = query.where(filter=FieldFilter("createdByEmail", "==", user_email))
             
             # Apply sorting - using archivedAt descending (most recent first)
             query = query.order_by('archivedAt', direction=Query.DESCENDING).order_by('eventId')
@@ -178,7 +179,7 @@ class EventArchiveRepository(BaseRepository):
         """Get statistics about archived events"""
         try:
             # Count all archived events
-            archived_query = self.collection.where("isArchived", "==", True)
+            archived_query = self.collection.where(filter=FieldFilter("isArchived", "==", True))
             archived_docs = await archived_query.get()
             total_archived = len(archived_docs)
             

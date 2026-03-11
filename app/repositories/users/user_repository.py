@@ -3,6 +3,7 @@ from app.auth.firebase_init import get_firestore_client
 from app.models.pagination import PaginationParams, UserFilters, CursorPaginationParams, CursorInfo
 from app.utils.logger import get_service_logger
 from typing import Tuple, List, Optional
+from google.cloud.firestore_v1.base_query import FieldFilter
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -33,9 +34,9 @@ class UserRepository:
             # Apply filters if provided
             if filters:
                 if filters.role:
-                    query = query.where("role", "==", filters.role)
+                    query = query.where(filter=FieldFilter("role", "==", filters.role))
                 if filters.profession:
-                    query = query.where("profession", "==", filters.profession)
+                    query = query.where(filter=FieldFilter("profession", "==", filters.profession))
             
             # Order by email for consistent pagination
             query = query.order_by("email")
@@ -70,18 +71,18 @@ class UserRepository:
             # Apply filters if provided
             if filters:
                 if filters.role:
-                    query = query.where("role", "==", filters.role)
+                    query = query.where(filter=FieldFilter("role", "==", filters.role))
                 if filters.profession:
-                    query = query.where("profession", "==", filters.profession)
+                    query = query.where(filter=FieldFilter("profession", "==", filters.profession))
             
             # Apply cursor-based filtering (using email as sort field)
             if cursor_info:
                 if cursor_params.direction == "next":
                     if cursor_info.start_time:  # Using start_time field for email
-                        query = query.where("email", ">", cursor_info.start_time)
+                        query = query.where(filter=FieldFilter("email", ">", cursor_info.start_time))
                 else:  # direction == "prev"
                     if cursor_info.start_time:
-                        query = query.where("email", "<", cursor_info.start_time)
+                        query = query.where(filter=FieldFilter("email", "<", cursor_info.start_time))
             
             # Order by email for consistent pagination
             query = query.order_by("email")
@@ -157,7 +158,7 @@ class UserRepository:
 
     async def get_by_email(self, email: str):
         try:
-            query = self.collection.where("email", "==", email).limit(1).stream()
+            query = self.collection.where(filter=FieldFilter("email", "==", email)).limit(1).stream()
             user = None
             async for doc in query:
                 user = doc
@@ -230,7 +231,7 @@ class UserRepository:
 
     async def update_profile_by_email(self, user_data: dict, user_email: str):
         try:
-            query = self.collection.where("email", "==", user_email).limit(1).stream()
+            query = self.collection.where(filter=FieldFilter("email", "==", user_email)).limit(1).stream()
             user = None
             async for doc in query:
                 user = doc
