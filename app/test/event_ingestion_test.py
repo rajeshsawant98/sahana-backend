@@ -186,7 +186,7 @@ async def backfill_archive_fields():
 async def test_eventbrite_scraper(city="Tempe", state="AZ"):
     from app.scrapers.eventbrite_scraper_async import scrape_eventbrite_async
     print(f"\n🔍 Testing Eventbrite scraper for {city}, {state}")
-    events = await scrape_eventbrite_async(city=city, state=state, max_scrolls=3)
+    events = await scrape_eventbrite_async(city=city, state=state, max_pages=2)
     print(f"\n✅ Scraped {len(events)} events")
     for i, e in enumerate(events[:3], 1):
         print(f"\n📌 Event #{i}: {e.get('eventName')}")

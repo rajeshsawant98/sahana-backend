@@ -4,12 +4,12 @@ This guide provides comprehensive documentation for the Sahana Backend API. The 
 
 ## 🌐 Base Information
 
-- **Base URL**: `http://localhost:8000` (development)
+- **Base URL**: `http://localhost:8080` (development)
 - **API Version**: v1
 - **Protocol**: HTTPS (production) / HTTP (development)
 - **Content-Type**: `application/json`
-- **Interactive Documentation**: `http://localhost:8000/docs` (Swagger UI)
-- **OpenAPI Schema**: `http://localhost:8000/openapi.json`
+- **Interactive Documentation**: `http://localhost:8080/docs` (Swagger UI)
+- **OpenAPI Schema**: `http://localhost:8080/openapi.json`
 
 ## 🔐 Authentication
 
@@ -30,48 +30,62 @@ Authorization: Bearer <your_jwt_token>
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/auth/login` | Login with email/password |
-| `POST` | `/auth/google` | Login via Google SSO |
-| `POST` | `/auth/signup` | Create new user account |
-| `POST` | `/auth/refresh` | Refresh JWT token |
-| `POST` | `/auth/logout` | Logout and invalidate token |
+| `POST` | `/api/auth/login` | Login with email/password |
+| `POST` | `/api/auth/google` | Login via Google SSO |
+| `POST` | `/api/auth/register` | Create new user account |
+| `POST` | `/api/auth/refresh` | Refresh JWT token |
+| `GET` | `/api/auth/me` | Get current user profile |
+| `PUT` | `/api/auth/me` | Update user profile |
+| `PUT` | `/api/auth/me/interests` | Update user interests |
 
 ## 📋 Core API Endpoints
-
-### 👤 User Management
-
-| Method | Endpoint | Description | Auth Required |
-|--------|----------|-------------|---------------|
-| `GET` | `/users/me` | Get current user profile | ✅ |
-| `PUT` | `/users/me` | Update user profile | ✅ |
-| `GET` | `/users/{user_id}` | Get user by ID | ❌ |
 
 ### 🎉 Event Management
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/events/` | Get all events (with filters) | ❌ |
-| `POST` | `/events/` | Create new event | ✅ |
-| `GET` | `/events/{event_id}` | Get event details | ❌ |
-| `PUT` | `/events/{event_id}` | Update event | ✅ |
-| `DELETE` | `/events/{event_id}` | Delete event | ✅ |
-| `GET` | `/events/me/created` | Get events created by user | ✅ |
-| `GET` | `/events/me/rsvped` | Get events user RSVP'd to | ✅ |
+| `GET` | `/api/events` | Get all events (cursor pagination) | ❌ |
+| `POST` | `/api/events/new` | Create new event | ✅ |
+| `GET` | `/api/events/{event_id}` | Get event details | ❌ |
+| `PUT` | `/api/events/{event_id}` | Update event | ✅ |
+| `DELETE` | `/api/events/{event_id}` | Delete event | ✅ |
+| `PATCH` | `/api/events/{event_id}/archive` | Archive event | ✅ |
+| `PATCH` | `/api/events/{event_id}/unarchive` | Unarchive event | ✅ |
+| `GET` | `/api/events/me/created` | Get events created by user | ✅ |
+| `GET` | `/api/events/me/rsvped` | Get events user RSVP'd to | ✅ |
+| `GET` | `/api/events/me/organized` | Get events organized by user | ✅ |
+| `GET` | `/api/events/me/moderated` | Get events moderated by user | ✅ |
+| `GET` | `/api/events/me/interested` | Get events user marked interested | ✅ |
+| `GET` | `/api/events/location/nearby` | Get nearby events by city/state | ❌ |
 
 ### 🎟️ RSVP Management
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `POST` | `/events/{event_id}/rsvp` | RSVP to an event | ✅ |
-| `DELETE` | `/events/{event_id}/rsvp` | Cancel RSVP | ✅ |
-| `GET` | `/events/{event_id}/rsvps` | Get event RSVPs | ❌ |
+| `POST` | `/api/events/{event_id}/rsvp` | RSVP to an event | ✅ |
+| `DELETE` | `/api/events/{event_id}/rsvp` | Cancel RSVP | ✅ |
+| `GET` | `/api/events/{event_id}/rsvps` | Get event RSVPs | ❌ |
+
+### 🤝 Friend System
+
+| Method | Endpoint | Description | Auth Required |
+|--------|----------|-------------|---------------|
+| `POST` | `/api/friends/request` | Send friend request | ✅ |
+| `GET` | `/api/friends/requests` | Get friend requests | ✅ |
+| `POST` | `/api/friends/accept/{id}` | Accept friend request | ✅ |
+| `POST` | `/api/friends/reject/{id}` | Reject friend request | ✅ |
+| `DELETE` | `/api/friends/request/{id}` | Cancel friend request | ✅ |
+| `GET` | `/api/friends/list` | Get friends list | ✅ |
+| `GET` | `/api/friends/search` | Search users | ✅ |
+| `GET` | `/api/friends/status/{user_id}` | Get friendship status | ✅ |
+| `GET` | `/api/friends/recommendations` | Get friend recommendations | ✅ |
 
 ### 🔧 Administrative
 
 | Method | Endpoint | Description | Auth Required |
 |--------|----------|-------------|---------------|
-| `GET` | `/admin/users` | Get all users | ✅ (Admin) |
-| `GET` | `/admin/events` | Get all events | ✅ (Admin) |
+| `GET` | `/api/admin/users` | Get all users | ✅ (Admin) |
+| `GET` | `/api/events/all` | Get all events (non-paginated) | ✅ (Admin) |
 
 ## 🔍 Query Parameters
 
@@ -80,24 +94,26 @@ Authorization: Bearer <your_jwt_token>
 The `/events/` endpoint supports various filters:
 
 ```
-GET /events/?category=technology&location=San Francisco&page=1&page_size=10
+GET /api/events?category=technology&city=San+Francisco&page_size=10
 ```
 
 **Available Filters:**
 
 - `category` (string): Filter by event category
-- `location` (string): Filter by event location
-- `date_from` (ISO date): Events starting from this date
-- `date_to` (ISO date): Events ending before this date
-- `online` (boolean): Filter online events only
-- `search` (string): Search in event title and description
+- `city` (string): Filter by city
+- `state` (string): Filter by state
+- `is_online` (boolean): Filter online events only
+- `creator_email` (string): Filter by creator email
+- `start_date` (ISO date): Events starting from this date
+- `end_date` (ISO date): Events ending before this date
 
 ### Pagination Parameters
 
-All list endpoints support optional pagination:
+All list endpoints use cursor-based pagination:
 
-- `page` (integer): Page number (1-based, enables pagination)
-- `page_size` (integer): Items per page (1-100, default: 10)
+- `cursor` (string): Base64 encoded cursor for position
+- `page_size` (integer): Items per page (1-100, default: 12)
+- `direction` (string): "next" or "prev" (default: "next")
 
 ## 📝 Request/Response Examples
 
@@ -106,7 +122,7 @@ All list endpoints support optional pagination:
 #### Login Request
 
 ```http
-POST /auth/login
+POST /api/auth/login
 Content-Type: application/json
 
 {
@@ -119,16 +135,11 @@ Content-Type: application/json
 
 ```json
 {
+  "message": "User authenticated successfully",
   "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
   "refresh_token": "dGhpc2lzYXJlZnJlc2h0b2tlbg...",
   "token_type": "bearer",
-  "expires_in": 3600,
-  "user": {
-    "id": "user123",
-    "email": "user@example.com",
-    "name": "John Doe",
-    "profile_picture": "https://..."
-  }
+  "email": "user@example.com"
 }
 ```
 
@@ -137,7 +148,7 @@ Content-Type: application/json
 #### Create Event Request
 
 ```http
-POST /events/
+POST /api/events/new
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
@@ -187,7 +198,7 @@ Content-Type: application/json
 #### Request
 
 ```http
-GET /events/?page=1&page_size=5&category=technology
+GET /api/events?page_size=5&category=technology
 ```
 
 #### Response
@@ -206,16 +217,16 @@ GET /events/?page=1&page_size=5&category=technology
         "longitude": -122.4194
       },
       "current_attendees": 15,
-      "max_attendees": 50,
-      "rsvp_status": null
+      "max_attendees": 50
     }
   ],
-  "total_count": 25,
-  "page": 1,
-  "page_size": 5,
-  "total_pages": 5,
-  "has_next": true,
-  "has_previous": false
+  "pagination": {
+    "next_cursor": "eyJzdGFydFRpbWUiOi...",
+    "prev_cursor": null,
+    "has_next": true,
+    "has_previous": false,
+    "page_size": 5
+  }
 }
 ```
 

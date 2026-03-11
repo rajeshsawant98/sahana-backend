@@ -10,56 +10,45 @@ The Events API allows users to create, discover, update, and manage events. It s
 
 ### Get All Events
 
-**Endpoint:** `GET /events/`
+**Endpoint:** `GET /api/events`
 
 **Query Parameters:**
 
 - `category` (optional): Filter by event category
-- `location` (optional): Filter by location
-- `date_from` (optional): Events starting from this date (ISO format)
-- `date_to` (optional): Events ending before this date (ISO format)
-- `online` (optional): Filter online events only (boolean)
-- `search` (optional): Search in title and description
-- `page` (optional): Page number for pagination
-- `page_size` (optional): Items per page (1-100, default: 10)
+- `city` (optional): Filter by city
+- `state` (optional): Filter by state
+- `is_online` (optional): Filter online events only (boolean)
+- `creator_email` (optional): Filter by creator email
+- `start_date` (optional): Events starting from this date (ISO format)
+- `end_date` (optional): Events ending before this date (ISO format)
+- `cursor` (optional): Base64 encoded cursor for pagination
+- `page_size` (optional): Items per page (1-100, default: 12)
+- `direction` (optional): Pagination direction ("next" or "prev", default: "next")
 
 **Example Request:**
 
 ```
-GET /events/?category=technology&location=San Francisco&page=1&page_size=10
+GET /api/events?category=technology&city=San+Francisco&page_size=10
 ```
 
-**Response (without pagination):**
+**Response (cursor-paginated):**
 
 ```json
 {
-  "events": [
-    {
-      "id": "event_123",
-      "title": "Tech Meetup 2025",
-      "description": "Join us for networking and tech talks",
-      "category": "technology",
-      "date_time": "2025-07-15T18:00:00Z",
-      "location": {
-        "address": "123 Tech Street, San Francisco, CA",
-        "latitude": 37.7749,
-        "longitude": -122.4194
-      },
-      "is_online": false,
-      "max_attendees": 50,
-      "current_attendees": 15,
-      "tags": ["technology", "networking"],
-      "created_by": "user123",
-      "created_at": "2025-06-28T10:00:00Z",
-      "rsvp_status": null
-    }
-  ]
+  "items": [...],
+  "pagination": {
+    "next_cursor": "eyJzdGFydFRpbWUiOi...",
+    "prev_cursor": null,
+    "has_next": true,
+    "has_previous": false,
+    "page_size": 12
+  }
 }
 ```
 
 ### Get Event by ID
 
-**Endpoint:** `GET /events/{event_id}`
+**Endpoint:** `GET /api/events/{event_id}`
 
 **Response:**
 
@@ -88,7 +77,7 @@ GET /events/?category=technology&location=San Francisco&page=1&page_size=10
 
 ### Create Event
 
-**Endpoint:** `POST /events/`
+**Endpoint:** `POST /api/events/new`
 
 **Authentication:** Required
 
@@ -115,7 +104,7 @@ GET /events/?category=technology&location=San Francisco&page=1&page_size=10
 
 ### Update Event
 
-**Endpoint:** `PUT /events/{event_id}`
+**Endpoint:** `PUT /api/events/{event_id}`
 
 **Authentication:** Required (event creator only)
 
@@ -123,7 +112,7 @@ GET /events/?category=technology&location=San Francisco&page=1&page_size=10
 
 ### Delete Event
 
-**Endpoint:** `DELETE /events/{event_id}`
+**Endpoint:** `DELETE /api/events/{event_id}`
 
 **Authentication:** Required (event creator only)
 
@@ -137,25 +126,57 @@ GET /events/?category=technology&location=San Francisco&page=1&page_size=10
 
 ### Get User's Created Events
 
-**Endpoint:** `GET /events/me/created`
+**Endpoint:** `GET /api/events/me/created`
 
 **Authentication:** Required
 
-**Query Parameters:**
-
-- `page` (optional): Page number
-- `page_size` (optional): Items per page
+**Query Parameters:** Cursor pagination parameters (`cursor`, `page_size`, `direction`)
 
 ### Get User's RSVP'd Events
 
-**Endpoint:** `GET /events/me/rsvped`
+**Endpoint:** `GET /api/events/me/rsvped`
 
 **Authentication:** Required
 
-**Query Parameters:**
+**Query Parameters:** Cursor pagination parameters (`cursor`, `page_size`, `direction`)
 
-- `page` (optional): Page number
-- `page_size` (optional): Items per page
+### Get User's Organized Events
+
+**Endpoint:** `GET /api/events/me/organized`
+
+**Authentication:** Required
+
+### Get User's Moderated Events
+
+**Endpoint:** `GET /api/events/me/moderated`
+
+**Authentication:** Required
+
+### Get User's Interested Events
+
+**Endpoint:** `GET /api/events/me/interested`
+
+**Authentication:** Required
+
+### Get Nearby Events
+
+**Endpoint:** `GET /api/events/location/nearby`
+
+**Authentication:** Not required
+
+**Query Parameters:** `city` (required), `state` (required), cursor pagination parameters
+
+### Archive Event
+
+**Endpoint:** `PATCH /api/events/{event_id}/archive`
+
+**Authentication:** Required (event creator only)
+
+### Unarchive Event
+
+**Endpoint:** `PATCH /api/events/{event_id}/unarchive`
+
+**Authentication:** Required (event creator only)
 
 ## Event Categories
 
@@ -200,8 +221,7 @@ For online events, location can be null or contain virtual meeting details.
 
 ```json
 {
-  "detail": "Event not found",
-  "error_code": "EVENT_NOT_FOUND"
+  "detail": "Event not found"
 }
 ```
 
@@ -209,8 +229,7 @@ For online events, location can be null or contain virtual meeting details.
 
 ```json
 {
-  "detail": "You don't have permission to modify this event",
-  "error_code": "INSUFFICIENT_PERMISSIONS"
+  "detail": "You don't have permission to modify this event"
 }
 ```
 

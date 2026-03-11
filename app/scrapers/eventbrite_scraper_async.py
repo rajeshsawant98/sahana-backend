@@ -7,7 +7,8 @@ from app.utils.logger import get_service_logger
 
 logger = get_service_logger(__name__)
 
-semaphore = asyncio.Semaphore(5)
+# Max concurrent detail-page fetches within a single city scrape
+_detail_semaphore = asyncio.Semaphore(5)
 
 
 def _canonical_url(href: str) -> str:
@@ -60,7 +61,7 @@ async def _try_js_var(page, var_name: str):
 
 async def fetch_event_detail(context, href: str, seen_canonical: set, extra_categories: list[str] | None = None) -> dict | None:
     canonical = _canonical_url(href)
-    async with semaphore:
+    async with _detail_semaphore:
         if canonical in seen_canonical:
             return None
 
@@ -96,12 +97,69 @@ async def fetch_event_detail(context, href: str, seen_canonical: set, extra_cate
         return None
 
 
-async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen_links=None):
+async def _collect_listing_page(page, base_url: str, max_pages: int, seen_canonical: set) -> dict[str, list[str]]:
+    """
+    Paginate through Eventbrite listing pages and collect canonical event URLs
+    with their categories.  Stops early when a page yields no new links.
+    Returns: {canonical_url: [category, ...]}
+    """
+    link_categories: dict[str, list[str]] = {}
+
+    for page_num in range(1, max_pages + 1):
+        url = base_url if page_num == 1 else f"{base_url}?page={page_num}"
+        logger.info(f"Listing page {page_num}: {url}")
+
+        try:
+            await page.goto(url, timeout=60000, wait_until="domcontentloaded")
+            await asyncio.sleep(2)  # let lazy-loaded cards settle
+        except Exception as e:
+            logger.warning(f"Failed to load listing page {page_num}: {e}")
+            break
+
+        elements = await page.query_selector_all("a[data-event-id]")
+        new_this_page = 0
+        for el in elements:
+            raw = await el.get_attribute("href")
+            cat = await el.get_attribute("data-event-category")
+            if not raw:
+                continue
+            full = urljoin("https://www.eventbrite.com", raw)
+            c = _canonical_url(full)
+            if c not in link_categories and c not in seen_canonical:
+                link_categories[c] = [cat] if cat else []
+                new_this_page += 1
+
+        logger.info(f"  → {new_this_page} new links (total so far: {len(link_categories)})")
+        if new_this_page == 0:
+            break  # no new events, stop paginating
+
+    return link_categories
+
+
+# Category slugs to scrape per city. Order matters — all-events first gives the
+# broadest set; categories after it fill in gaps with genre-specific events.
+_CATEGORY_SLUGS = [
+    "all-events",
+    "music-events",
+    "food-and-drink",
+    "arts",
+    "nightlife",
+    "sports-and-fitness",
+    "science-and-tech",
+    "family-and-education",
+    "health",
+    "charity-and-causes",
+    "community",
+]
+
+
+async def scrape_eventbrite_async(city="Tempe", state="AZ", max_pages=3, seen_links=None):
     if seen_links is None:
         seen_links = set()
 
     seen_canonical: set[str] = {_canonical_url(u) for u in seen_links}
-    results = []
+    location = f"{state.lower()}--{city.lower()}"
+    link_categories: dict[str, list[str]] = {}  # canonical -> [category]
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
@@ -111,43 +169,26 @@ async def scrape_eventbrite_async(city="Tempe", state="AZ", max_scrolls=10, seen
             "Chrome/114.0.0.0 Safari/537.36"
         ))
 
-        # ── Listing page ─────────────────────────────────────────────────────
-        page = await context.new_page()
-        url = f"https://www.eventbrite.com/d/{state.lower()}--{city.lower()}/all-events/"
-        logger.info(f"Navigating to {url}")
-        await page.goto(url, timeout=60000)
+        # ── Paginated listing across all category slugs ───────────────────────
+        listing_page = await context.new_page()
+        for slug in _CATEGORY_SLUGS:
+            base_url = f"https://www.eventbrite.com/d/{location}/{slug}/"
+            new_links = await _collect_listing_page(listing_page, base_url, max_pages, seen_canonical | set(link_categories))
+            link_categories.update(new_links)
+            logger.info(f"[{city}] {slug}: +{len(new_links)} new links (total: {len(link_categories)})")
+        await listing_page.close()
 
-        for _ in range(max_scrolls):
-            await page.mouse.wheel(0, 6000)
-            await asyncio.sleep(1.5)
-        await asyncio.sleep(2)
-
-        # Collect de-duplicated links + per-event categories from data-event-category
-        link_categories: dict[str, list[str]] = {}  # canonical -> [category]
-        elements = await page.query_selector_all("a[data-event-id]")
-        for el in elements:
-            raw = await el.get_attribute("href")
-            cat = await el.get_attribute("data-event-category")
-            if raw:
-                full = urljoin("https://www.eventbrite.com", raw)
-                c = _canonical_url(full)
-                if c not in link_categories:
-                    link_categories[c] = [cat] if cat else []
-
-        await page.close()
-
-        # ── Detail pages (for links not resolved from listing page) ──────────
-        remaining = [(c, c) for c in link_categories if c not in seen_canonical]
-        logger.info(f"Visiting {len(remaining)} detail pages (de-duped from {len(link_categories)} raw links)")
+        # ── Concurrent detail page fetches ────────────────────────────────────
+        remaining = list(link_categories.keys())
+        logger.info(f"[{city}] Fetching {len(remaining)} unique detail pages")
 
         tasks = [
-            fetch_event_detail(context, href, seen_canonical, extra_categories=link_categories.get(c))
-            for c, href in remaining
+            fetch_event_detail(context, href, seen_canonical, extra_categories=link_categories[href])
+            for href in remaining
         ]
-        detail_events = await asyncio.gather(*tasks)
-        results.extend([e for e in detail_events if e])
+        results = [e for e in await asyncio.gather(*tasks) if e]
 
         await browser.close()
 
-    logger.info(f"Scraped {len(results)} events from Eventbrite.")
+    logger.info(f"[{city}] Scraped {len(results)} Eventbrite events.")
     return results

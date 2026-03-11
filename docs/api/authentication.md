@@ -14,7 +14,7 @@ Sahana uses JWT (JSON Web Token) based authentication with support for:
 
 ### Login with Email/Password
 
-**Endpoint:** `POST /auth/login`
+**Endpoint:** `POST /api/auth/login`
 
 **Request Body:**
 
@@ -29,36 +29,31 @@ Sahana uses JWT (JSON Web Token) based authentication with support for:
 
 ```json
 {
+  "message": "User authenticated successfully",
   "access_token": "jwt_token_here",
   "refresh_token": "refresh_token_here",
   "token_type": "bearer",
-  "expires_in": 3600,
-  "user": {
-    "id": "user123",
-    "email": "user@example.com",
-    "name": "John Doe",
-    "profile_picture": "https://example.com/photo.jpg"
-  }
+  "email": "user@example.com"
 }
 ```
 
 ### Google SSO Login
 
-**Endpoint:** `POST /auth/google`
+**Endpoint:** `POST /api/auth/google`
 
 **Request Body:**
 
 ```json
 {
-  "credential": "google_jwt_credential"
+  "token": "google_id_token"
 }
 ```
 
-**Response:** Same as email/password login
+**Response:** Same as email/password login (without `email` field)
 
 ### User Registration
 
-**Endpoint:** `POST /auth/signup`
+**Endpoint:** `POST /api/auth/register`
 
 **Request Body:**
 
@@ -66,14 +61,41 @@ Sahana uses JWT (JSON Web Token) based authentication with support for:
 {
   "email": "user@example.com",
   "password": "secure_password",
-  "name": "John Doe",
-  "confirm_password": "secure_password"
+  "name": "John Doe"
+}
+```
+
+**Response:** Same as login response
+
+### Get Current User Profile
+
+**Endpoint:** `GET /api/auth/me`
+
+**Headers:** `Authorization: Bearer <access_token>`
+
+### Update Profile
+
+**Endpoint:** `PUT /api/auth/me`
+
+**Headers:** `Authorization: Bearer <access_token>`
+
+### Update Interests
+
+**Endpoint:** `PUT /api/auth/me/interests`
+
+**Headers:** `Authorization: Bearer <access_token>`
+
+**Request Body:**
+
+```json
+{
+  "interests": ["Technology", "Music", "Travel"]
 }
 ```
 
 ### Token Refresh
 
-**Endpoint:** `POST /auth/refresh`
+**Endpoint:** `POST /api/auth/refresh`
 
 **Request Body:**
 
@@ -82,12 +104,6 @@ Sahana uses JWT (JSON Web Token) based authentication with support for:
   "refresh_token": "your_refresh_token"
 }
 ```
-
-### Logout
-
-**Endpoint:** `POST /auth/logout`
-
-**Headers:** `Authorization: Bearer <access_token>`
 
 ## Token Usage
 
@@ -110,25 +126,14 @@ Use the refresh token to obtain a new access token before it expires.
 
 ```json
 {
-  "detail": "Invalid email or password",
-  "error_code": "INVALID_CREDENTIALS"
+  "detail": "Invalid credentials"
 }
 ```
 
-### Token Expired
+### Token Expired / Invalid Token
 
 ```json
 {
-  "detail": "Token has expired",
-  "error_code": "TOKEN_EXPIRED"
-}
-```
-
-### Invalid Token
-
-```json
-{
-  "detail": "Invalid token",
-  "error_code": "INVALID_TOKEN"
+  "detail": "Token has expired"
 }
 ```
