@@ -31,6 +31,13 @@ jobs:
           docker buildx build --platform linux/amd64 -t gcr.io/sahana-deaf0/sahana-backend .
           docker push gcr.io/sahana-deaf0/sahana-backend
 
+      - name: Cleanup old container images
+        run: |
+          gcloud container images list-tags gcr.io/sahana-deaf0/sahana-backend \
+            --sort-by="~timestamp" \
+            --format="get(digest)" | tail -n +2 | \
+            xargs -I {} gcloud container images delete gcr.io/sahana-deaf0/sahana-backend@{} --quiet || true
+
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy sahana-backend \
