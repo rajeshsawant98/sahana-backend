@@ -163,7 +163,64 @@ async def _fetch_eb_city(city: str, state: str, url_cache: set) -> tuple[str, li
             return key, []
 
 
-# ── Orchestrator ──────────────────────────────────────────────────────────────
+# ── Ticketmaster-only orchestrator (used by Cloud Run Job / run_ingestion.py) ─
+
+async def ingest_ticketmaster_events_for_all_cities() -> dict:
+    """
+    Ingests only Ticketmaster events — no browser/Playwright required.
+    Called by the daily Cloud Run Job via run_ingestion.py.
+    """
+    redis = get_redis_client()
+
+    if redis is not None:
+        try:
+            lock_acquired = await redis.set(INGESTION_LOCK_KEY, "1", nx=True, ex=TTL_INGESTION_LOCK)
+            if not lock_acquired:
+                logger.warning("TM ingestion already running (lock held), skipping.")
+                return {"status": "skipped", "reason": "ingestion_locked"}
+        except Exception as e:
+            logger.warning(f"Could not acquire ingestion lock ({e}), proceeding without lock")
+            redis = None
+
+    try:
+        locations = await get_unique_user_locations(redis=redis)
+        logger.info(f"[TM-only] Starting ingestion for {len(locations)} cities")
+
+        tm_results = await _fetch_tm_all_cities(locations, redis=redis)
+
+        summary = []
+        for city, state in locations:
+            key = f"{city},{state}"
+            events = tm_results.get(key, [])
+            result = await ingest_bulk_events(events, redis=redis) if events else {"saved": 0, "skipped": 0}
+            summary.append({
+                "location": f"{city}, {state}",
+                "fetched": len(events),
+                "saved": result["saved"],
+                "skipped": result["skipped"],
+            })
+
+        try:
+            await _flush_event_query_cache()
+        except Exception as e:
+            logger.warning(f"Could not flush event query cache post-ingestion: {e}")
+
+        total_events = sum(r["saved"] for r in summary)
+        return {
+            "status": "success",
+            "total_ingested": total_events,
+            "processed_cities": len(summary),
+            "details": summary,
+        }
+    finally:
+        if redis is not None:
+            try:
+                await redis.delete(INGESTION_LOCK_KEY)
+            except Exception:
+                pass
+
+
+# ── Full orchestrator (Ticketmaster + Eventbrite) ─────────────────────────────
 
 async def ingest_events_for_all_cities() -> dict:
     redis = get_redis_client()

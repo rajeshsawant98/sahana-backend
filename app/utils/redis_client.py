@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Any, Optional
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -39,5 +39,5 @@ async def close_redis() -> None:
         logger.info("Redis connection closed")
 
 
-def get_redis_client() -> Optional[object]:
+def get_redis_client() -> Optional[Any]:
     return _redis_client
