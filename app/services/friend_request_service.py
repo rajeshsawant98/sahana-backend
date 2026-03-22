@@ -76,33 +76,33 @@ class FriendRequestService:
                 return {"received": [], "sent": []}
             
             requests = await self.friend_repo.get_requests_for_user(user_email, status="pending")
+            if not requests:
+                return {"received": [], "sent": []}
+
+            # Bulk fetch all involved users in one query
+            all_emails = {r["sender_id"] for r in requests} | {r["receiver_id"] for r in requests}
+            users_by_email = await self.user_repo.get_by_emails(all_emails)
+
             received_requests = []
             sent_requests = []
-            
             for request in requests:
-                sender = await self.user_repo.get_by_email(request["sender_id"])
-                receiver = await self.user_repo.get_by_email(request["receiver_id"])
-                
+                sender = users_by_email.get(request["sender_id"])
+                receiver = users_by_email.get(request["receiver_id"])
                 if not sender or not receiver:
                     continue
-                
-                sender_profile = self._build_friend_profile(sender, request["sender_id"])
-                receiver_profile = self._build_friend_profile(receiver, request["receiver_id"])
-                
                 request_with_profile = FriendRequestWithProfile(
                     id=request["id"],
-                    sender=sender_profile,
-                    receiver=receiver_profile,
+                    sender=self._build_friend_profile(sender, request["sender_id"]),
+                    receiver=self._build_friend_profile(receiver, request["receiver_id"]),
                     status=request["status"],
                     created_at=request["created_at"],
                     updated_at=request.get("updated_at")
                 )
-                
                 if request["direction"] == "received":
                     received_requests.append(request_with_profile)
                 else:
                     sent_requests.append(request_with_profile)
-            
+
             return {"received": received_requests, "sent": sent_requests}
             
         except Exception as e:

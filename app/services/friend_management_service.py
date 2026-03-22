@@ -20,16 +20,17 @@ class FriendManagementService:
             if not user:
                 return []
 
-            # Get friend IDs from accepted friend requests
             friend_ids = await self.friend_repo.get_accepted_friendship_ids(user_email)
+            if not friend_ids:
+                return []
 
+            users_by_email = await self.user_repo.get_by_emails(friend_ids)
             friends = []
             for friend_id in friend_ids:
-                # Get user details for each friend
-                friend_user = await self.user_repo.get_by_email(friend_id)
+                friend_user = users_by_email.get(friend_id)
                 if friend_user:
-                    friend_profile = FriendProfile(
-                        id=friend_user.get("email", friend_id),  # Use email as ID
+                    friends.append(FriendProfile(
+                        id=friend_user.get("email", friend_id),
                         name=friend_user.get("name", ""),
                         email=friend_user.get("email", friend_id),
                         bio=friend_user.get("bio"),
@@ -37,9 +38,7 @@ class FriendManagementService:
                         location=friend_user.get("location"),
                         interests=friend_user.get("interests", []),
                         created_at=friend_user.get("created_at")
-                    )
-                    friends.append(friend_profile)
-
+                    ))
             return friends
 
         except Exception as e:

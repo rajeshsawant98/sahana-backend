@@ -174,6 +174,21 @@ class UserRepository:
             self.logger.error(f"Error retrieving user: {e}")
             return None
 
+    async def get_by_emails(self, emails: List[str]) -> Dict[str, Any]:
+        """Fetch multiple users by email in a single query. Returns dict keyed by email."""
+        if not emails:
+            return {}
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("SELECT * FROM users WHERE email = ANY(:emails)"),
+                    {"emails": list(emails)}
+                )
+                return {row._mapping["email"]: _row_to_user_dict(row) for row in result.fetchall()}
+        except Exception as e:
+            self.logger.error(f"Error bulk-fetching users: {e}")
+            return {}
+
     async def get_by_id(self, uid: str) -> Optional[Dict[str, Any]]:
         """uid is email (Firestore used email as document ID)."""
         return await self.get_by_email(uid)

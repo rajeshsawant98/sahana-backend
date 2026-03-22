@@ -321,23 +321,16 @@ async def rsvp_to_event_endpoint(
     current_user: dict = Depends(user_only)
 ):
     """RSVP to an event (status: joined or interested)"""
-    # Use the already instantiated event_rsvp_service
     try:
         email = current_user["email"]
-        if status == "interested":
-            success = await event_rsvp_service.interested_in_event(event_id, email)
-        else:
-            success = await event_rsvp_service.join_event(event_id, email)
+        success = await event_rsvp_service.rsvp_to_event(event_id, email, status)
         if success:
             return await get_rsvp_response_data(event_id, email, "created")
-        else:
-            raise HTTPExceptionHelper.server_error("Failed to RSVP to event")
+        raise HTTPExceptionHelper.server_error("Failed to RSVP to event")
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg:
             raise HTTPExceptionHelper.not_found(error_msg)
-        elif "already RSVP'd" in error_msg:
-            raise HTTPExceptionHelper.conflict(error_msg)
         else:
             raise HTTPExceptionHelper.bad_request(error_msg)
     except Exception as e:
@@ -350,18 +343,12 @@ async def cancel_rsvp_endpoint(
     current_user: dict = Depends(user_only)
 ):
     """Cancel RSVP to an event (status: joined or interested)"""
-    # Use the already instantiated event_rsvp_service
-    # ...existing code...
     try:
         email = current_user["email"]
-        if status == "interested":
-            success = await event_rsvp_service.cancel_interested_rsvp(event_id, email)
-        else:
-            success = await event_rsvp_service.cancel_joined_rsvp(event_id, email)
+        success = await event_rsvp_service.cancel_rsvp(event_id, email, status)
         if success:
             return await get_rsvp_response_data(event_id, email, "cancelled")
-        else:
-            raise HTTPExceptionHelper.server_error("Failed to cancel RSVP")
+        raise HTTPExceptionHelper.server_error("Failed to cancel RSVP")
     except ValueError as e:
         error_msg = str(e)
         if "not found" in error_msg:

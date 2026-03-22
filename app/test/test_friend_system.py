@@ -227,12 +227,11 @@ class TestFriendService:
         mock_delete_request.assert_called_once_with(self.test_request_id)
 
     @patch.object(FriendRepository, 'get_accepted_friendship_ids', new_callable=AsyncMock)
+    @patch.object(UserRepository, 'get_by_emails', new_callable=AsyncMock)
     @patch.object(UserRepository, 'get_by_email', new_callable=AsyncMock)
     @pytest.mark.asyncio
-    async def test_get_friends_list_success(self, mock_get_by_email, mock_get_friend_ids):
+    async def test_get_friends_list_success(self, mock_get_by_email, mock_get_by_emails, mock_get_friend_ids):
         """Test getting friends list"""
-        # Setup mocks
-        # First call is for the user themselves, subsequent calls are for friends
         mock_friend_user = {
             "id": "friend1@example.com",
             "name": "Friend One",
@@ -243,21 +242,15 @@ class TestFriendService:
             "interests": ["testing"],
             "created_at": None
         }
-        mock_get_by_email.side_effect = [self.mock_sender, mock_friend_user]
-        
+        mock_get_by_email.return_value = self.mock_sender
+        mock_get_by_emails.return_value = {"friend1@example.com": mock_friend_user}
         mock_get_friend_ids.return_value = ["friend1@example.com"]
-        
-        # Test
+
         result = await friend_service.get_friends_list(self.sender_email)
-        
-        # Assertions
+
         assert len(result) == 1
         assert result[0].name == "Friend One"
         assert result[0].email == "friend1@example.com"
-        
-        # Verify mock calls
-        mock_get_by_email.assert_any_call(self.sender_email)
-        mock_get_by_email.assert_any_call("friend1@example.com")
         mock_get_friend_ids.assert_called_once_with(self.sender_email)
 
     @patch.object(UserRepository, 'search_users', new_callable=AsyncMock)

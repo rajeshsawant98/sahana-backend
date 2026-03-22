@@ -12,37 +12,47 @@ class EventRsvpService:
         self.crud_repo = EventCrudRepository()
         self.logger = get_service_logger(__name__)
 
-    async def join_event(self, event_id: str, user_email: str) -> bool:
+    VALID_RSVP_STATUSES = {"joined", "interested"}
+
+    async def _get_validated_event(self, event_id: str):
         event = await self.crud_repo.get_event_by_id(event_id)
         if not event:
             raise ValueError(f"Event {event_id} not found")
         EventValidator.validate_event_exists(event)
+        return event
+
+    async def rsvp_to_event(self, event_id: str, user_email: str, status: str) -> bool:
+        """RSVP to an event with status 'joined' or 'interested'."""
+        if status not in self.VALID_RSVP_STATUSES:
+            raise ValueError(f"Invalid RSVP status '{status}'. Must be one of: {self.VALID_RSVP_STATUSES}")
+        event = await self._get_validated_event(event_id)
         EventValidator.validate_rsvp_preconditions(event, user_email)
+        if status == "interested":
+            return await self.repo.interested_rsvp(event_id, user_email)
         return await self.repo.join_rsvp(event_id, user_email)
 
-    async def interested_in_event(self, event_id: str, user_email: str) -> bool:
-        event = await self.crud_repo.get_event_by_id(event_id)
-        if not event:
-            raise ValueError(f"Event {event_id} not found")
-        EventValidator.validate_event_exists(event)
-        EventValidator.validate_rsvp_preconditions(event, user_email)
-        return await self.repo.interested_rsvp(event_id, user_email)
-
-    async def cancel_joined_rsvp(self, event_id: str, user_email: str) -> bool:
-        event = await self.crud_repo.get_event_by_id(event_id)
-        if not event:
-            raise ValueError(f"Event {event_id} not found")
-        EventValidator.validate_event_exists(event)
+    async def cancel_rsvp(self, event_id: str, user_email: str, status: str) -> bool:
+        """Cancel an RSVP with status 'joined' or 'interested'."""
+        if status not in self.VALID_RSVP_STATUSES:
+            raise ValueError(f"Invalid RSVP status '{status}'. Must be one of: {self.VALID_RSVP_STATUSES}")
+        event = await self._get_validated_event(event_id)
         EventValidator.validate_cancel_rsvp_preconditions(event, user_email)
+        if status == "interested":
+            return await self.repo.cancel_interested_rsvp(event_id, user_email)
         return await self.repo.cancel_joined_rsvp(event_id, user_email)
 
+    # Keep specific methods for backward compat with EventRepositoryManager
+    async def join_event(self, event_id: str, user_email: str) -> bool:
+        return await self.rsvp_to_event(event_id, user_email, "joined")
+
+    async def interested_in_event(self, event_id: str, user_email: str) -> bool:
+        return await self.rsvp_to_event(event_id, user_email, "interested")
+
+    async def cancel_joined_rsvp(self, event_id: str, user_email: str) -> bool:
+        return await self.cancel_rsvp(event_id, user_email, "joined")
+
     async def cancel_interested_rsvp(self, event_id: str, user_email: str) -> bool:
-        event = await self.crud_repo.get_event_by_id(event_id)
-        if not event:
-            raise ValueError(f"Event {event_id} not found")
-        EventValidator.validate_event_exists(event)
-        EventValidator.validate_cancel_rsvp_preconditions(event, user_email)
-        return await self.repo.cancel_interested_rsvp(event_id, user_email)
+        return await self.cancel_rsvp(event_id, user_email, "interested")
 
     async def update_rsvp_status(self, event_id: str, user_email: str, status: str, rating: Optional[int] = None, review: Optional[str] = None) -> bool:
         event = await self.crud_repo.get_event_by_id(event_id)
