@@ -1,4 +1,6 @@
 import json
+from sqlalchemy import text
+from app.db.session import AsyncSessionLocal
 from app.repositories.events import EventRepositoryManager
 from app.services.event_rsvp_service import EventRsvpService
 from app.services.user_service import validate_user_emails
@@ -6,7 +8,7 @@ from app.models.pagination import EventFilters, CursorPaginationParams, EventCur
 from app.utils.logger import get_service_logger
 from app.utils.event_validators import EventValidator
 from app.utils.redis_client import get_redis_client
-from app.utils.cache_keys import event_query_cache_key, TTL_EVENT_QUERY
+from app.utils.cache_keys import event_query_cache_key, nearby_events_cache_key, TTL_EVENT_QUERY
 from typing import Optional
 from datetime import datetime, timedelta
 
@@ -21,14 +23,14 @@ async def flush_event_query_cache() -> None:
     if redis is None:
         return
     try:
-        pattern = "sahana:events:q:*"
-        cursor = 0
-        while True:
-            cursor, keys = await redis.scan(cursor, match=pattern, count=100)
-            if keys:
-                await redis.delete(*keys)
-            if cursor == 0:
-                break
+        for pattern in ("sahana:events:q:*", "sahana:events:nearby:*"):
+            cursor = 0
+            while True:
+                cursor, keys = await redis.scan(cursor, match=pattern, count=100)
+                if keys:
+                    await redis.delete(*keys)
+                if cursor == 0:
+                    break
     except Exception as e:
         logger.warning(f"Could not flush event query cache: {e}")
 
@@ -266,11 +268,31 @@ async def get_all_events_paginated(cursor_params: CursorPaginationParams, filter
         return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
 async def get_nearby_events_paginated(city: str, state: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
+    redis = get_redis_client()
+    cache_key = nearby_events_cache_key(
+        city, state,
+        cursor_params.model_dump() if hasattr(cursor_params, "model_dump") else vars(cursor_params),
+    )
+
+    if redis is not None:
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                return EventCursorPaginatedResponse(**json.loads(cached))
+        except Exception:
+            pass
+
     try:
         events, next_cursor, prev_cursor, has_next, has_previous = await event_repo.get_nearby_events_paginated(city, state, cursor_params)
-        return EventCursorPaginatedResponse.create(
+        response = EventCursorPaginatedResponse.create(
             events, next_cursor, prev_cursor, has_next, has_previous, cursor_params.page_size
         )
+        if redis is not None:
+            try:
+                await redis.set(cache_key, response.model_dump_json(), ex=TTL_EVENT_QUERY)
+            except Exception:
+                pass
+        return response
     except Exception as e:
         logger.error(f"Error in get_nearby_events_paginated: {e}", exc_info=True)
         return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
@@ -352,34 +374,62 @@ async def get_archived_events_paginated(cursor_params: CursorPaginationParams, u
         return EventCursorPaginatedResponse.create([], None, None, False, False, cursor_params.page_size)
 
 async def get_rsvp_response_data(event_id: str, user_email: str, action: str) -> dict:
-    """Get formatted RSVP response data - centralized response formatting"""
-    # Delegate to event_rsvp_service if advanced formatting is needed
-    event = await get_event_by_id(event_id)
-    rsvp_list = await event_rsvp_service.get_rsvp_list(event_id) if event else []
+    """Lightweight RSVP response — fetches only event name + RSVP count."""
+    event_name, rsvp_count = "", 0
+    try:
+        async with AsyncSessionLocal() as session:
+            row = await session.execute(
+                text("SELECT event_name FROM events WHERE event_id = :eid"),
+                {"eid": event_id}
+            )
+            r = row.fetchone()
+            if r:
+                event_name = r.event_name
+        rsvp_count = await event_rsvp_service.repo.get_rsvp_count(event_id)
+    except Exception:
+        pass
     return {
         "message": f"RSVP {action} successfully",
         "rsvp_status": "going" if action == "created" else None,
         "event": {
             "id": event_id,
-            "title": event.get("eventName", "") if event else "",
-            "current_attendees": len(rsvp_list)
+            "title": event_name,
+            "current_attendees": rsvp_count,
         }
     }
 
 async def get_paginated_rsvp_list(event_id: str, page: int = 1, page_size: int = 10) -> dict:
-    """Get paginated RSVP list for an event."""
-    rsvp_list = await event_rsvp_service.get_rsvp_list(event_id)
-    total_count = len(rsvp_list)
-    start_idx = (page - 1) * page_size
-    end_idx = start_idx + page_size
+    """Get paginated RSVP list for an event — count and items fetched separately from DB."""
+    offset = (page - 1) * page_size
+    try:
+        async with AsyncSessionLocal() as session:
+            total_count = int(await session.scalar(
+                text("SELECT COUNT(*) FROM rsvps WHERE event_id = :eid"),
+                {"eid": event_id}
+            ) or 0)
+            result = await session.execute(text("""
+                SELECT user_email, status, rating, review
+                FROM rsvps WHERE event_id = :eid
+                ORDER BY updated_at DESC
+                LIMIT :limit OFFSET :offset
+            """), {"eid": event_id, "limit": page_size, "offset": offset})
+            items = [
+                {"email": r.user_email, "status": r.status,
+                 **({"rating": r.rating} if r.rating is not None else {}),
+                 **({"review": r.review} if r.review is not None else {})}
+                for r in result.fetchall()
+            ]
+    except Exception as e:
+        logger.error(f"Error in get_paginated_rsvp_list: {e}", exc_info=True)
+        total_count, items = 0, []
     return {
-        "items": rsvp_list[start_idx:end_idx],
+        "items": items,
         "pagination": {
             "page": page,
             "page_size": page_size,
             "total": total_count,
             "total_pages": (total_count + page_size - 1) // page_size,
-            "has_next": end_idx < total_count,
+            "has_next": offset + page_size < total_count,
             "has_prev": page > 1,
         }
     }

@@ -139,6 +139,18 @@ class EventRsvpRepository:
 
     # ─── Getters ──────────────────────────────────────────────────────────────
 
+    async def get_rsvp_count(self, event_id: str) -> int:
+        try:
+            async with AsyncSessionLocal() as session:
+                count = await session.scalar(
+                    text("SELECT COUNT(*) FROM rsvps WHERE event_id = :eid"),
+                    {"eid": event_id}
+                )
+                return int(count or 0)
+        except Exception as e:
+            self.logger.error(f"Error getting RSVP count for event {event_id}: {e}", exc_info=True)
+            return 0
+
     async def get_rsvp_list(self, event_id: str) -> List[Dict[str, Any]]:
         try:
             async with AsyncSessionLocal() as session:

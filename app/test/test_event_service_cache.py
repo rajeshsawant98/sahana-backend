@@ -148,15 +148,18 @@ class TestFlushEventQueryCache:
     @pytest.mark.asyncio
     async def test_scan_and_delete_matching_keys(self):
         from app.services.event_service import flush_event_query_cache
-        keys = ["sahana:events:q:abc123", "sahana:events:q:def456"]
+        q_keys = ["sahana:events:q:abc123", "sahana:events:q:def456"]
+        nearby_keys = ["sahana:events:nearby:xyz789"]
         mock_redis = AsyncMock()
-        mock_redis.scan = AsyncMock(return_value=(0, keys))
+        mock_redis.scan = AsyncMock(side_effect=[(0, q_keys), (0, nearby_keys)])
         mock_redis.delete = AsyncMock()
 
         with patch('app.services.event_service.get_redis_client', return_value=mock_redis):
             await flush_event_query_cache()
 
-        mock_redis.delete.assert_called_once_with(*keys)
+        assert mock_redis.delete.call_count == 2
+        mock_redis.delete.assert_any_call(*q_keys)
+        mock_redis.delete.assert_any_call(*nearby_keys)
 
     @pytest.mark.asyncio
     async def test_scan_empty_result_skips_delete(self):
@@ -174,17 +177,19 @@ class TestFlushEventQueryCache:
     async def test_scan_multiple_pages_deletes_all_batches(self):
         from app.services.event_service import flush_event_query_cache
         mock_redis = AsyncMock()
+        # Two pages for sahana:events:q:*, one page for sahana:events:nearby:*
         mock_redis.scan = AsyncMock(side_effect=[
             (42, ["sahana:events:q:page1a", "sahana:events:q:page1b"]),
             (0,  ["sahana:events:q:page2a"]),
+            (0,  []),
         ])
         mock_redis.delete = AsyncMock()
 
         with patch('app.services.event_service.get_redis_client', return_value=mock_redis):
             await flush_event_query_cache()
 
-        assert mock_redis.scan.call_count == 2
-        assert mock_redis.delete.call_count == 2
+        assert mock_redis.scan.call_count == 3
+        assert mock_redis.delete.call_count == 2  # two q batches deleted; nearby was empty
 
     @pytest.mark.asyncio
     async def test_redis_scan_failure_does_not_raise(self):

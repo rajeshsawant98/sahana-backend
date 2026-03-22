@@ -139,13 +139,14 @@ class EventQueryRepository:
     # ─── Public methods ───────────────────────────────────────────────────────
 
     async def get_all_events(self) -> List[Dict[str, Any]]:
-        """Get all non-archived events."""
+        """Get all non-archived events (hard-capped at 5000 for admin use)."""
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("""
                     SELECT * FROM events
                     WHERE is_archived = FALSE
                     ORDER BY start_time ASC NULLS LAST
+                    LIMIT 5000
                 """))
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:
@@ -177,7 +178,7 @@ class EventQueryRepository:
             return [], None, None, False, False
 
     async def get_external_events(self, city: str, state: str) -> List[Dict[str, Any]]:
-        """Non-paginated external events for a city/state."""
+        """Non-paginated external events for a city/state (capped at 200)."""
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("""
@@ -186,6 +187,7 @@ class EventQueryRepository:
                       AND city = :city AND state = :state
                       AND origin = 'external'
                     ORDER BY start_time ASC NULLS LAST
+                    LIMIT 200
                 """), {"city": city, "state": state})
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:
@@ -204,11 +206,14 @@ class EventQueryRepository:
             return [], None, None, False, False
 
     async def get_events_for_archiving(self) -> List[Dict[str, Any]]:
-        """Non-archived events — service layer decides which ones to archive."""
+        """Events whose end time has passed and are not yet archived."""
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("""
-                    SELECT * FROM events WHERE is_archived = FALSE
+                    SELECT * FROM events
+                    WHERE is_archived = FALSE
+                      AND start_time + (duration * interval '1 second') < NOW()
+                    LIMIT 1000
                 """))
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:

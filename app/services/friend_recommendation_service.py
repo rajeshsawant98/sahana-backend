@@ -90,7 +90,7 @@ class FriendRecommendationService:
             city = (me_loc.get("city") or "").strip()
             state = (me_loc.get("state") or "").strip()
             if city:
-                nearby_events = await self.event_query_repo.get_nearby_events(city=city, state=state)
+                nearby_events = await self.event_query_repo.get_external_events(city=city, state=state)
                 for ev in nearby_events:
                     cats = set((ev.get("categories") or []))
                     for rsvp in (ev.get("rsvpList") or []):
