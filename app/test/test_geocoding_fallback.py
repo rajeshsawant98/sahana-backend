@@ -85,6 +85,12 @@ def test_geoapify_us_heuristic_rejects_non_us_address():
     assert geocoding._is_probably_us_location("shenzhen, shenzhen 123456, United States") is False
 
 
+def test_resolve_geocoding_provider_prefers_geoapify_key(monkeypatch):
+    monkeypatch.delenv("GEOCODING_PROVIDER", raising=False)
+    monkeypatch.setenv("GEOAPIFY_API_KEY", "dummy-key")
+    assert geocoding.resolve_geocoding_provider() == "geoapify"
+
+
 def test_apply_geocode_fallback_no_api_key(monkeypatch):
     monkeypatch.setenv("GEOCODING_PROVIDER", "google")
     monkeypatch.delenv("GOOGLE_MAPS_API_KEY", raising=False)

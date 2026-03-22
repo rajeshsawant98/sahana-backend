@@ -239,6 +239,15 @@ def get_geocoding_stats() -> dict[str, int]:
     return dict(_geocode_stats)
 
 
+def resolve_geocoding_provider() -> str:
+    provider = (os.getenv("GEOCODING_PROVIDER") or "").strip().lower()
+    if provider:
+        return provider
+    if os.getenv("GEOAPIFY_API_KEY"):
+        return "geoapify"
+    return "nominatim"
+
+
 def _is_probably_us_location(address: str) -> bool:
     lowered = (address or "").lower()
     state_matches = re.findall(r",\s*([a-z]{2})(?:\s+\d{5}(?:-\d{4})?)?\s*(?:,|$)", lowered)
@@ -465,7 +474,7 @@ async def apply_geocode_fallback(location: dict) -> dict:
         _geocode_stats["skipped_invalid_address"] += 1
         return location
 
-    provider = (os.getenv("GEOCODING_PROVIDER") or "nominatim").strip().lower()
+    provider = resolve_geocoding_provider()
     coords: Optional[Tuple[float, float]] = None
     resolution_used: Optional[str] = None
     for resolution, address in address_candidates:
