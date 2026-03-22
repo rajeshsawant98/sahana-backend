@@ -10,9 +10,31 @@ from app.models.event import event as EventCreateRequest
 from app.models import PaginatedUsersResponse, UserResponse
 from app.models.pagination import PaginationParams, UserFilters
 from app.utils.http_exceptions import HTTPExceptionHelper
+from app.db.session import AsyncSessionLocal
+from sqlalchemy import text
 from typing import Optional, List, Union
 
 admin_router = APIRouter()
+
+
+@admin_router.get("/stats")
+async def get_admin_stats(current_user: dict = Depends(admin_only)):
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text("""
+            SELECT
+                (SELECT COUNT(*) FROM users) AS total_users,
+                (SELECT COUNT(*) FROM events) AS total_events,
+                (SELECT COUNT(*) FROM events WHERE is_archived = false) AS active_events,
+                (SELECT COUNT(*) FROM events WHERE is_archived = true) AS archived_events
+        """))
+        row = result.fetchone()
+        return {
+            "total_users": row.total_users,
+            "total_events": row.total_events,
+            "active_events": row.active_events,
+            "archived_events": row.archived_events,
+        }
+
 
 # Get all users (with optional pagination and filters)
 @admin_router.get("/users", response_model=Union[PaginatedUsersResponse, dict])

@@ -70,6 +70,10 @@ class EventRepositoryManager:
         """Unarchive a single event"""
         return await self.archive_repo.unarchive_event(event_id)
 
+    async def archive_past_events_direct(self, archived_by: str = "system", reason: str = "Automatically archived - event ended") -> int:
+        """Archive all past events in one SQL UPDATE — no row limit."""
+        return await self.archive_repo.archive_past_events_direct(archived_by, reason)
+
     async def archive_events_by_ids(self, event_ids: List[str], archived_by: str, reason: str = "Automatically archived - event ended") -> int:
         """Archive multiple events by their IDs"""
         return await self.archive_repo.archive_events_by_ids(event_ids, archived_by, reason)

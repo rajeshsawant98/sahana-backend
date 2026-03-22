@@ -278,12 +278,12 @@ class UserRepository:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text(f"""
                     SELECT u.*,
-                           1 - (u.embedding <=> :embedding::vector) AS similarity_score
+                           1 - (u.embedding <=> CAST(:embedding AS vector)) AS similarity_score
                     FROM users u
                     WHERE u.email != ALL(:excluded)
                       AND u.embedding IS NOT NULL
                       {city_clause}
-                    ORDER BY u.embedding <=> :embedding::vector ASC
+                    ORDER BY u.embedding <=> CAST(:embedding AS vector) ASC
                     LIMIT :limit
                 """), params)
                 rows = result.fetchall()

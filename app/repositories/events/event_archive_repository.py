@@ -58,6 +58,31 @@ class EventArchiveRepository:
             self.logger.error(f"Error unarchiving event {event_id}: {e}", exc_info=True)
             return False
 
+    async def archive_past_events_direct(
+        self, archived_by: str = "system",
+        reason: str = "Automatically archived - event ended"
+    ) -> int:
+        """Archive all past events in a single UPDATE — no row limit."""
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("""
+                    UPDATE events SET
+                        is_archived    = TRUE,
+                        archived_at    = NOW(),
+                        archived_by    = :archived_by,
+                        archive_reason = :reason,
+                        updated_at     = NOW()
+                    WHERE is_archived = FALSE
+                      AND start_time + (duration * interval '1 second') < NOW()
+                """), {"archived_by": archived_by, "reason": reason})
+                await session.commit()
+                count = result.rowcount
+            self.logger.info(f"Archived {count} past events (direct)")
+            return count
+        except Exception as e:
+            self.logger.error(f"Error in archive_past_events_direct: {e}", exc_info=True)
+            return 0
+
     async def archive_events_by_ids(
         self, event_ids: List[str], archived_by: str,
         reason: str = "Automatically archived - event ended"
@@ -149,7 +174,7 @@ class EventArchiveRepository:
             if has_next and events:
                 last = events[-1]
                 next_cursor = CursorInfo(
-                    start_time=last.get("archivedAt"),
+                    start_time=last.get("startTime"),
                     event_id=last.get("eventId")
                 ).encode()
 

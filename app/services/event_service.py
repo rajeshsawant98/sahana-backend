@@ -183,30 +183,7 @@ async def get_archived_events(user_email: Optional[str] = None) -> list[dict]:
 
 async def archive_past_events(archived_by: str = "system") -> int:
     try:
-        # Get all events that could potentially be archived
-        events_to_check = await event_repo.get_events_for_archiving()
-        
-        events_to_archive = []
-        for event in events_to_check:
-            start_time = event.get("startTime")
-            duration = event.get("duration", 0)
-            
-            if start_time:
-                try:
-                    # Parse start time and calculate end time
-                    start_dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                    end_dt = start_dt + timedelta(minutes=duration)
-                    
-                    # If event has ended, mark for archiving
-                    if end_dt < datetime.utcnow().replace(tzinfo=end_dt.tzinfo):
-                        events_to_archive.append(event["documentId"])
-                except Exception as parse_error:
-                    logger.warning(f"Error parsing date for event {event.get('documentId')}: {parse_error}")
-                    continue
-        
-        # Archive the identified events
-        return await event_repo.archive_events_by_ids(events_to_archive, archived_by)
-        
+        return await event_repo.archive_past_events_direct(archived_by)
     except Exception as e:
         logger.error(f"Error in archive_past_events: {e}", exc_info=True)
         return 0
