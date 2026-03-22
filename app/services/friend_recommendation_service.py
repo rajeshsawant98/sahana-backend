@@ -58,16 +58,17 @@ class FriendRecommendationService:
     ) -> List[Dict[str, Any]]:
         """Return ranked friend recommendations.
 
-        This implementation is intentionally simple and Firestore-only.
-        It *will* become slow as user count grows (O(N)), so we also return
-        reasons + score to help you evaluate and later move to a graph/vector index.
+        Uses pgvector semantic similarity when the user has an embedding.
+        Falls back to rule-based scoring (O(N)) when embedding is NULL.
         """
 
         me = await self.user_repo.get_by_email(user_email)
         if not me:
             return []
 
-        # Exclusions: self + accepted + any pending in either direction
+        # ── Semantic path (pgvector) ──────────────────────────────────────────
+        # If the current user has an embedding, use ANN similarity search.
+        # Excluded set is built the same way for both paths.
         excluded: Set[str] = {user_email}
         excluded.update(await self.friend_repo.get_accepted_friendship_ids(user_email))
         pending = await self.friend_repo.get_requests_for_user(user_email, direction="all", status="pending")
@@ -75,6 +76,41 @@ class FriendRecommendationService:
             excluded.add(r.get("sender_id", ""))
             excluded.add(r.get("receiver_id", ""))
 
+        me_embedding = me.get("embedding")
+        if me_embedding is not None:
+            try:
+                import ast
+                if isinstance(me_embedding, str):
+                    me_embedding = ast.literal_eval(me_embedding)
+                me_loc = (me.get("location") or {})
+                city = (me_loc.get("city") or "").strip() or None
+                matches = await self.user_repo.get_semantic_matches(
+                    user_email=user_email,
+                    embedding=me_embedding,
+                    city=city,
+                    limit=limit,
+                    excluded_emails=list(excluded),
+                )
+                return [
+                    {
+                        "id": u.get("id", u["email"]),
+                        "name": u.get("name", ""),
+                        "email": u["email"],
+                        "bio": u.get("bio", ""),
+                        "profession": u.get("profession", ""),
+                        "profile_picture": u.get("profile_picture", ""),
+                        "location": u.get("location"),
+                        "interests": list(u.get("interests") or []),
+                        "vibe_description": u.get("vibe_description"),
+                        "score": round(u.get("similarity_score", 0), 4),
+                        "reasons": {"similarityScore": round(u.get("similarity_score", 0), 4)},
+                    }
+                    for u in matches
+                ]
+            except Exception as e:
+                self.logger.warning(f"Semantic match failed, falling back to rule-based: {e}")
+
+        # ── Rule-based fallback (O(N)) ────────────────────────────────────────
         me_interests = set((me.get("interests") or []))
         me_loc = (me.get("location") or {})
         me_coords: Optional[Tuple[float, float]] = None
@@ -87,17 +123,17 @@ class FriendRecommendationService:
         # Optional: use nearby events to build an "attended categories" signature.
         attended_cats_by_user: Dict[str, Set[str]] = {}
         try:
-            city = (me_loc.get("city") or "").strip()
-            state = (me_loc.get("state") or "").strip()
-            if city:
-                nearby_events = await self.event_query_repo.get_external_events(city=city, state=state)
+            rb_city = (me_loc.get("city") or "").strip()
+            rb_state = (me_loc.get("state") or "").strip()
+            if rb_city:
+                nearby_events = await self.event_query_repo.get_external_events(city=rb_city, state=rb_state)
                 for ev in nearby_events:
                     cats = set((ev.get("categories") or []))
                     for rsvp in (ev.get("rsvpList") or []):
                         if rsvp.get("status") == "attended":
-                            email = rsvp.get("email")
-                            if email:
-                                attended_cats_by_user.setdefault(email, set()).update(cats)
+                            ev_email = rsvp.get("email")
+                            if ev_email:
+                                attended_cats_by_user.setdefault(ev_email, set()).update(cats)
         except Exception as e:
             # This should never break recommendations; it just weakens the score.
             self.logger.warning(f"Failed to build attended-category signatures: {e}")

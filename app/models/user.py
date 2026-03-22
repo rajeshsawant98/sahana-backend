@@ -99,6 +99,7 @@ class UserUpdate(BaseModel):
     profile_picture: Optional[str] = None
     interests: Optional[List[str]] = None
     location: Optional[Location] = None
+    vibe_description: Optional[str] = Field(None, max_length=500)
 
     @field_validator('interests', mode='before')
     @classmethod
@@ -127,6 +128,7 @@ class UserResponse(BaseModel):
     google_uid: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
+    vibe_description: Optional[str] = None
 
 class UserProfile(BaseModel):
     """Public user profile for search results and friend lists"""

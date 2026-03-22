@@ -22,11 +22,16 @@ async def update_user_data(user_data: dict, user_email: str):
     return await repo.update_profile_by_email(user_data, user_email)
 
 async def store_or_update_user_data(user_data: dict):
+    from app.services.embedding_service import generate_and_store_user_embedding
     existing_user = await repo.get_by_email(user_data["email"])
     if existing_user:
         await repo.update_profile_by_email(user_data, user_data["email"])
     else:
         await repo.store_google_user(user_data)
+        # Best-effort embedding for new Google users (fires if bio/interests populated later via OAuth profile)
+        full_user = await repo.get_by_email(user_data["email"])
+        if full_user:
+            await generate_and_store_user_embedding(full_user)
 
 # ✅ New function to validate email addresses (used in role assignment)
 async def validate_user_emails(email_list: list[str]) -> dict:

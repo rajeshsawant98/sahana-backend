@@ -251,6 +251,53 @@ class UserRepository:
             self.logger.error(f"Error searching users: {e}")
             return []
 
+    async def get_semantic_matches(
+        self,
+        user_email: str,
+        embedding: List[float],
+        city: Optional[str] = None,
+        limit: int = 20,
+        excluded_emails: Optional[List[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return users ranked by cosine similarity to the given embedding.
+        Excludes the requesting user, existing connections, and pending requests.
+        Optionally filters to same city.
+        """
+        try:
+            excluded = list(set([user_email] + (excluded_emails or [])))
+            params: Dict[str, Any] = {
+                "embedding": str(embedding),
+                "excluded": excluded,
+                "limit": limit,
+            }
+            city_clause = ""
+            if city:
+                city_clause = "AND LOWER(u.city) = LOWER(:city)"
+                params["city"] = city
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text(f"""
+                    SELECT u.*,
+                           1 - (u.embedding <=> :embedding::vector) AS similarity_score
+                    FROM users u
+                    WHERE u.email != ALL(:excluded)
+                      AND u.embedding IS NOT NULL
+                      {city_clause}
+                    ORDER BY u.embedding <=> :embedding::vector ASC
+                    LIMIT :limit
+                """), params)
+                rows = result.fetchall()
+
+            users = []
+            for row in rows:
+                d = _row_to_user_dict(row)
+                d["similarity_score"] = float(row._mapping.get("similarity_score") or 0)
+                users.append(d)
+            return users
+        except Exception as e:
+            self.logger.error(f"Error in semantic match query: {e}", exc_info=True)
+            return []
+
     # ─── Write ────────────────────────────────────────────────────────────────
 
     async def create_with_password(self, email: str, password: str, name: str) -> None:
@@ -309,6 +356,7 @@ class UserRepository:
                         country           = COALESCE(:country, country),
                         formatted_address = COALESCE(:formatted_address, formatted_address),
                         location_name     = COALESCE(:location_name, location_name),
+                        vibe_description  = COALESCE(:vibe_description, vibe_description),
                         updated_at        = NOW()
                     WHERE email = :email
                 """), {
@@ -327,8 +375,21 @@ class UserRepository:
                     "country": loc.get("country"),
                     "formatted_address": loc.get("formattedAddress"),
                     "location_name": loc.get("name"),
+                    "vibe_description": user_data.get("vibe_description"),
                 })
                 await session.commit()
             self.logger.info(f"Profile updated: {user_email}")
+
+            # Refresh embedding if any embeddable field changed
+            _embedding_fields = {"name", "profession", "bio", "interests", "vibe_description"}
+            if any(user_data.get(f) is not None for f in _embedding_fields):
+                try:
+                    from app.services.embedding_service import generate_and_store_user_embedding
+                    updated_user = await self.get_by_email(user_email)
+                    if updated_user:
+                        await generate_and_store_user_embedding(updated_user)
+                except Exception as emb_err:
+                    self.logger.warning(f"Embedding refresh failed for {user_email}: {emb_err}")
+
         except Exception as e:
             self.logger.error(f"Error updating user profile: {e}")
