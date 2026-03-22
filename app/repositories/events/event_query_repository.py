@@ -112,19 +112,19 @@ class EventQueryRepository:
             return "", {}
 
         if filters.city:
-            conditions.append("e.city = :city")
+            conditions.append("LOWER(e.city) = LOWER(:city)")
             params["city"] = filters.city
         if filters.state:
-            conditions.append("e.state = :state")
+            conditions.append("LOWER(e.state) = LOWER(:state)")
             params["state"] = filters.state
         if filters.category:
-            conditions.append(":category = ANY(e.categories)")
+            conditions.append("EXISTS (SELECT 1 FROM unnest(e.categories) c WHERE LOWER(c) = LOWER(:category))")
             params["category"] = filters.category
         if filters.is_online is not None:
             conditions.append("e.is_online = :is_online")
             params["is_online"] = filters.is_online
         if filters.creator_email:
-            conditions.append("e.created_by_email = :creator_email")
+            conditions.append("LOWER(e.created_by_email) = LOWER(:creator_email)")
             params["creator_email"] = filters.creator_email
         if filters.start_date:
             conditions.append("e.start_time >= :start_date")
@@ -170,7 +170,7 @@ class EventQueryRepository:
     ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         """Non-archived community + external events in a city/state."""
         try:
-            extra_where = "AND e.city = :city AND e.state = :state AND e.origin IN ('manual', 'external', 'community')"
+            extra_where = "AND LOWER(e.city) = LOWER(:city) AND LOWER(e.state) = LOWER(:state) AND e.origin IN ('manual', 'external', 'community')"
             params = {"city": city, "state": state}
             return await self._paginate_events(cursor_params, extra_where, params)
         except Exception as e:
@@ -184,7 +184,7 @@ class EventQueryRepository:
                 result = await session.execute(text("""
                     SELECT * FROM events
                     WHERE is_archived = FALSE
-                      AND city = :city AND state = :state
+                      AND LOWER(city) = LOWER(:city) AND LOWER(state) = LOWER(:state)
                       AND origin = 'external'
                     ORDER BY start_time ASC NULLS LAST
                     LIMIT 200
@@ -198,7 +198,7 @@ class EventQueryRepository:
         self, city: str, state: str, cursor_params: CursorPaginationParams
     ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         try:
-            extra_where = "AND e.city = :city AND e.state = :state AND e.origin = 'external'"
+            extra_where = "AND LOWER(e.city) = LOWER(:city) AND LOWER(e.state) = LOWER(:state) AND e.origin = 'external'"
             params = {"city": city, "state": state}
             return await self._paginate_events(cursor_params, extra_where, params)
         except Exception as e:
