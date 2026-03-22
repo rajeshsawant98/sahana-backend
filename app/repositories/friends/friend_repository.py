@@ -105,33 +105,30 @@ class FriendRepository:
         self, user_id: str, direction: str = "all", status: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         try:
-            requests = []
+            params: Dict[str, Any] = {"uid": user_id}
+
+            if direction == "received":
+                where = "receiver_id = :uid"
+            elif direction == "sent":
+                where = "sender_id = :uid"
+            else:  # "all" — single query with OR
+                where = "(sender_id = :uid OR receiver_id = :uid)"
+
+            status_clause = ""
+            if status:
+                status_clause = " AND status = :status"
+                params["status"] = status
+
             async with AsyncSessionLocal() as session:
-                if direction in ("received", "all"):
-                    q = "SELECT * FROM friend_requests WHERE receiver_id = :uid"
-                    params: Dict[str, Any] = {"uid": user_id}
-                    if status:
-                        q += " AND status = :status"
-                        params["status"] = status
-                    result = await session.execute(text(q), params)
-                    for row in result.fetchall():
-                        d = _row_to_dict(row)
-                        d["direction"] = "received"
-                        requests.append(d)
+                result = await session.execute(text(f"""
+                    SELECT *,
+                           CASE WHEN receiver_id = :uid THEN 'received' ELSE 'sent' END AS direction
+                    FROM friend_requests
+                    WHERE {where}{status_clause}
+                    ORDER BY created_at DESC
+                """), params)
+                return [_row_to_dict(row) for row in result.fetchall()]
 
-                if direction in ("sent", "all"):
-                    q = "SELECT * FROM friend_requests WHERE sender_id = :uid"
-                    params = {"uid": user_id}
-                    if status:
-                        q += " AND status = :status"
-                        params["status"] = status
-                    result = await session.execute(text(q), params)
-                    for row in result.fetchall():
-                        d = _row_to_dict(row)
-                        d["direction"] = "sent"
-                        requests.append(d)
-
-            return requests
         except Exception as e:
             self.logger.error(f"Error getting requests for user: {e}")
             return []

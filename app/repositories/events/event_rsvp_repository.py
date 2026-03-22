@@ -167,11 +167,24 @@ class EventRsvpRepository:
         try:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("""
-                    SELECT user_email, status, rating, review
+                    SELECT
+                        COUNT(*) AS total_rsvps,
+                        COALESCE(
+                            JSON_AGG(JSON_BUILD_OBJECT(
+                                'email',  user_email,
+                                'status', status,
+                                'rating', rating,
+                                'review', review
+                            )),
+                            '[]'
+                        ) AS rsvp_list
                     FROM rsvps WHERE event_id = :eid
                 """), {"eid": event_id})
-                rsvp_list = [self._rsvp_row_to_dict(r) for r in result.fetchall()]
-            return {"total_rsvps": len(rsvp_list), "rsvp_list": rsvp_list}
+                row = result.fetchone()
+            return {
+                "total_rsvps": row.total_rsvps or 0,
+                "rsvp_list": list(row.rsvp_list or []),
+            }
         except Exception as e:
             self.logger.error(f"Error getting RSVP statistics for event {event_id}: {e}", exc_info=True)
             return {"total_rsvps": 0, "rsvp_list": []}
@@ -189,7 +202,7 @@ class EventRsvpRepository:
                     JOIN rsvps r ON r.event_id = e.event_id
                     WHERE r.user_email = :email
                       AND e.is_archived = FALSE
-                    ORDER BY e.start_time ASC
+                    ORDER BY e.start_time ASC, e.event_id ASC
                 """), {"email": user_email})
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:

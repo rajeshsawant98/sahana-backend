@@ -68,54 +68,56 @@ class UserDiscoveryService:
             return []
 
     async def get_user_suggestions(self, user_email: str, limit: int = 10) -> List[UserSearchResult]:
-        """Get friend suggestions based on mutual friends, interests, etc."""
+        """Get friend suggestions based on shared interests.
+        Single query — joins out already-connected users instead of N+1 checks.
+        """
         try:
-            # Validate current user exists
             current_user = await self.user_repo.get_by_email(user_email)
             if not current_user:
                 return []
-            
-            # Get current user's interests for matching
-            user_interests = current_user.get("interests", [])
-            
-            # For now, return users with similar interests
-            # This could be enhanced with ML algorithms
-            all_users = await self.user_repo.get_all_users()
+
+            user_interests = current_user.get("interests") or []
+            if not user_interests:
+                return []
+
+            from sqlalchemy import text
+            from app.db.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("""
+                    SELECT u.email, u.name, u.bio, u.profile_picture,
+                           u.interests, u.latitude, u.longitude,
+                           u.city, u.state, u.country, u.formatted_address, u.location_name
+                    FROM users u
+                    WHERE u.email != :me
+                      AND u.interests && :interests
+                      AND NOT EXISTS (
+                          SELECT 1 FROM friend_requests fr
+                          WHERE (fr.sender_id = :me AND fr.receiver_id = u.email)
+                             OR (fr.receiver_id = :me AND fr.sender_id = u.email)
+                      )
+                    LIMIT :limit
+                """), {
+                    "me": user_email,
+                    "interests": user_interests,
+                    "limit": limit,
+                })
+                rows = result.fetchall()
+
+            from app.repositories.users.user_repository import _row_to_user_dict
             suggestions = []
-            
-            for user_data in all_users:
-                if user_data.get("email") == user_email:  # Skip current user
-                    continue
-                    
-                # Check if already friends or has pending request
-                request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["accepted"])
-                if request:
-                    continue  # Already friends
-                
-                pending_request = await self.friend_repo.find_request_between_users(user_email, user_data.get("email", ""), ["pending"])
-                if pending_request:
-                    continue  # Has pending request
-                
-                # Calculate interest similarity (simple approach)
-                other_interests = user_data.get("interests", [])
-                common_interests = set(user_interests) & set(other_interests)
-                
-                if len(common_interests) > 0:  # Has common interests
-                    user_result = UserSearchResult(
-                        id=user_data.get("id", user_data.get("email", "")),  # Use ID or email as fallback
-                        name=user_data.get("name", ""),
-                        email=user_data.get("email", ""),
-                        bio=user_data.get("bio"),
-                        profile_picture=user_data.get("profile_picture"),
-                        location=user_data.get("location"),
-                        interests=user_data.get("interests", []),
-                        friendship_status="none"
-                    )
-                    suggestions.append(user_result)
-                    
-                    if len(suggestions) >= limit:
-                        break
-            
+            for row in rows:
+                u = _row_to_user_dict(row)
+                suggestions.append(UserSearchResult(
+                    id=u.get("email", ""),
+                    name=u.get("name", ""),
+                    email=u.get("email", ""),
+                    bio=u.get("bio"),
+                    profile_picture=u.get("profile_picture"),
+                    location=u.get("location"),
+                    interests=u.get("interests", []),
+                    friendship_status="none",
+                ))
             return suggestions
             
         except Exception as e:

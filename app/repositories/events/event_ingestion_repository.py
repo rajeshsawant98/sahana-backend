@@ -79,12 +79,77 @@ class EventIngestionRepository:
             return False
 
     async def save_bulk_events(self, events: list[dict]) -> int:
-        """Save multiple events sequentially. Returns count of newly inserted rows."""
-        saved = 0
+        """Batch INSERT all events in a single query. Returns count of newly inserted rows."""
+        if not events:
+            return 0
+
+        rows = []
         for event in events:
-            if await self.save_event(event):
-                saved += 1
-        return saved
+            loc = event.get("location") or {}
+            rows.append({
+                "event_id":         event.get("eventId"),
+                "event_name":       event.get("eventName", "Untitled Event"),
+                "description":      event.get("description", "No description available"),
+                "latitude":         loc.get("latitude"),
+                "longitude":        loc.get("longitude"),
+                "city":             loc.get("city"),
+                "state":            loc.get("state"),
+                "country":          loc.get("country"),
+                "formatted_address": loc.get("formattedAddress"),
+                "location_name":    loc.get("name"),
+                "start_time":       parse_datetime(event.get("startTime")),
+                "duration":         event.get("duration"),
+                "categories":       event.get("categories") or [],
+                "is_online":        event.get("isOnline", False),
+                "join_link":        event.get("joinLink") or None,
+                "image_url":        event.get("imageUrl") or None,
+                "created_by":       event.get("createdBy"),
+                "created_by_email": event.get("createdByEmail"),
+                "origin":           event.get("origin", "external"),
+                "source":           event.get("source"),
+                "original_id":      event.get("originalId") or None,
+                "tags":             event.get("tags") or [],
+                "price":            event.get("price") or None,
+                "format":           event.get("format") or None,
+                "sub_category":     event.get("subCategory") or None,
+            })
+
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("""
+                    INSERT INTO events (
+                        event_id, event_name, description,
+                        latitude, longitude, city, state, country,
+                        formatted_address, location_name,
+                        start_time, duration, categories,
+                        is_online, join_link, image_url,
+                        created_by, created_by_email,
+                        origin, source, original_id,
+                        tags, price, format, sub_category,
+                        is_archived
+                    ) VALUES (
+                        :event_id, :event_name, :description,
+                        :latitude, :longitude, :city, :state, :country,
+                        :formatted_address, :location_name,
+                        :start_time, :duration, :categories,
+                        :is_online, :join_link, :image_url,
+                        :created_by, :created_by_email,
+                        :origin, :source, :original_id,
+                        :tags, :price, :format, :sub_category,
+                        FALSE
+                    )
+                    ON CONFLICT (event_id) DO NOTHING
+                """), rows)
+                await session.commit()
+                return result.rowcount
+        except Exception as e:
+            self.logger.error(f"Bulk insert failed ({len(events)} events): {e}")
+            # Fall back to row-by-row so a single bad event doesn't drop the whole batch
+            saved = 0
+            for event in events:
+                if await self.save_event(event):
+                    saved += 1
+            return saved
 
     async def get_by_original_id(self, original_id: str) -> Optional[Dict[str, Any]]:
         """

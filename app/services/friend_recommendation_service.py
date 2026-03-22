@@ -140,9 +140,11 @@ class FriendRecommendationService:
 
         me_attended = attended_cats_by_user.get(user_email, set())
 
-        # Candidate pool (MVP): stream all users and rank.
-        # NOTE: This will not scale to very large user bases.
-        candidates = await self.user_repo.get_all_users()
+        rb_city_filter = me_loc.get("city", "").strip() or None
+        candidates = await self.user_repo.get_recommendation_candidates(
+            city=rb_city_filter,
+            excluded_emails=list(excluded),
+        )
 
         scored: List[_ScoredCandidate] = []
         for u in candidates:

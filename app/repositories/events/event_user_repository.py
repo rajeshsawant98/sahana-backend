@@ -72,7 +72,7 @@ class EventUserRepository:
                 result = await session.execute(text("""
                     SELECT * FROM events
                     WHERE is_archived = FALSE AND created_by_email = :email
-                    ORDER BY start_time ASC NULLS LAST
+                    ORDER BY start_time ASC NULLS LAST, event_id ASC
                 """), {"email": email})
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:
@@ -116,7 +116,7 @@ class EventUserRepository:
                     FROM events e
                     JOIN event_organizers o ON o.event_id = e.event_id
                     WHERE o.user_email = :email AND e.is_archived = FALSE
-                    ORDER BY e.start_time ASC NULLS LAST
+                    ORDER BY e.start_time ASC NULLS LAST, e.event_id ASC
                 """), {"email": user_email})
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:
@@ -157,7 +157,7 @@ class EventUserRepository:
                     FROM events e
                     JOIN event_moderators m ON m.event_id = e.event_id
                     WHERE m.user_email = :email AND e.is_archived = FALSE
-                    ORDER BY e.start_time ASC NULLS LAST
+                    ORDER BY e.start_time ASC NULLS LAST, e.event_id ASC
                 """), {"email": user_email})
                 return [row_to_event_dict(row) for row in result.fetchall()]
         except Exception as e:

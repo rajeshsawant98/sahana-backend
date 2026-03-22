@@ -90,19 +90,21 @@ class EventCrudRepository:
                     "created_by_email": data.get("createdByEmail"),
                 })
 
-                # Organizers
-                for email in data.get("organizers") or []:
+                # Organizers — batch insert
+                organizers = data.get("organizers") or []
+                if organizers:
                     await session.execute(text("""
                         INSERT INTO event_organizers (event_id, user_email)
                         VALUES (:eid, :email) ON CONFLICT DO NOTHING
-                    """), {"eid": event_id, "email": email})
+                    """), [{"eid": event_id, "email": e} for e in organizers])
 
-                # Moderators
-                for email in data.get("moderators") or []:
+                # Moderators — batch insert
+                moderators = data.get("moderators") or []
+                if moderators:
                     await session.execute(text("""
                         INSERT INTO event_moderators (event_id, user_email)
                         VALUES (:eid, :email) ON CONFLICT DO NOTHING
-                    """), {"eid": event_id, "email": email})
+                    """), [{"eid": event_id, "email": e} for e in moderators])
 
                 await session.commit()
             return {"eventId": event_id}
@@ -113,16 +115,40 @@ class EventCrudRepository:
     async def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
         try:
             async with AsyncSessionLocal() as session:
-                result = await session.execute(
-                    text("SELECT * FROM events WHERE event_id = :eid"),
-                    {"eid": event_id}
-                )
+                result = await session.execute(text("""
+                    SELECT
+                        e.*,
+                        COALESCE(
+                            ARRAY_AGG(DISTINCT o.user_email) FILTER (WHERE o.user_email IS NOT NULL),
+                            '{}'
+                        ) AS organizers,
+                        COALESCE(
+                            ARRAY_AGG(DISTINCT m.user_email) FILTER (WHERE m.user_email IS NOT NULL),
+                            '{}'
+                        ) AS moderators,
+                        COALESCE(
+                            JSON_AGG(JSON_BUILD_OBJECT(
+                                'email',  r.user_email,
+                                'status', r.status,
+                                'rating', r.rating,
+                                'review', r.review
+                            )) FILTER (WHERE r.user_email IS NOT NULL),
+                            '[]'
+                        ) AS rsvp_json
+                    FROM events e
+                    LEFT JOIN event_organizers o ON o.event_id = e.event_id
+                    LEFT JOIN event_moderators m ON m.event_id = e.event_id
+                    LEFT JOIN rsvps r ON r.event_id = e.event_id
+                    WHERE e.event_id = :eid
+                    GROUP BY e.event_id
+                """), {"eid": event_id})
                 row = result.fetchone()
                 if not row:
                     return None
-                organizers = await self._fetch_organizers(session, event_id)
-                moderators = await self._fetch_moderators(session, event_id)
-                rsvp_list  = await self._fetch_rsvp_list(session, event_id)
+                d = row._mapping
+                organizers = list(d.get("organizers") or [])
+                moderators = list(d.get("moderators") or [])
+                rsvp_list  = list(d.get("rsvp_json") or [])
                 return row_to_event_dict(row, organizers, moderators, rsvp_list)
         except Exception as e:
             self.logger.error(f"Error getting event {event_id}: {e}")

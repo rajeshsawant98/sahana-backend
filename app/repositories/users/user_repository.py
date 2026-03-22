@@ -59,34 +59,62 @@ class UserRepository:
     async def get_all_users(self) -> List[Dict[str, Any]]:
         try:
             async with AsyncSessionLocal() as session:
-                result = await session.execute(text("SELECT * FROM users"))
+                result = await session.execute(text("SELECT * FROM users LIMIT 1000"))
                 return [_row_to_user_dict(row) for row in result.fetchall()]
         except Exception as e:
             self.logger.error(f"Error retrieving users: {e}")
+            return []
+
+    async def get_recommendation_candidates(
+        self,
+        city: Optional[str],
+        excluded_emails: List[str],
+        limit: int = 200,
+    ) -> List[Dict[str, Any]]:
+        """City-scoped candidate pool for rule-based friend recommendations.
+        Excludes already-connected users and limits the scan to avoid full table reads.
+        Skips the embedding column since rule-based scoring doesn't use it.
+        """
+        try:
+            params: Dict[str, Any] = {"excluded": excluded_emails or [], "limit": limit}
+            city_clause = ""
+            if city:
+                city_clause = "AND LOWER(city) = LOWER(:city)"
+                params["city"] = city
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text(f"""
+                    SELECT email, name, bio, profession, profile_picture,
+                           interests, latitude, longitude, city, state,
+                           country, formatted_address, location_name
+                    FROM users
+                    WHERE email != ALL(:excluded)
+                      {city_clause}
+                    LIMIT :limit
+                """), params)
+                return [_row_to_user_dict(row) for row in result.fetchall()]
+        except Exception as e:
+            self.logger.error(f"Error getting recommendation candidates: {e}")
             return []
 
     async def get_all_users_paginated(
         self, pagination: PaginationParams, filters: Optional[UserFilters] = None
     ) -> Tuple[List[Dict[str, Any]], int]:
         try:
-            where, params = self._build_filter_clause(filters)
-            params["limit"] = pagination.page_size
-            params["offset"] = pagination.offset
+            where, count_params = self._build_filter_clause(filters)
+            data_params = {**count_params, "limit": pagination.page_size, "offset": pagination.offset}
             async with AsyncSessionLocal() as session:
+                count_result = await session.execute(
+                    text(f"SELECT COUNT(*) FROM users {where}"), count_params
+                )
+                total = count_result.scalar() or 0
+
                 result = await session.execute(text(f"""
-                    SELECT *, COUNT(*) OVER() AS _total
-                    FROM users
+                    SELECT * FROM users
                     {where}
                     ORDER BY email
                     LIMIT :limit OFFSET :offset
-                """), params)
-                rows = result.fetchall()
-                total = rows[0]._mapping["_total"] if rows else 0
-                users = []
-                for row in rows:
-                    d = _row_to_user_dict(row)
-                    d.pop("_total", None)
-                    users.append(d)
+                """), data_params)
+                users = [_row_to_user_dict(row) for row in result.fetchall()]
                 return users, total
         except Exception as e:
             self.logger.error(f"Error retrieving paginated users: {e}")

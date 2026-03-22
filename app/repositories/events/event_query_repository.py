@@ -144,7 +144,11 @@ class EventQueryRepository:
             params["state"] = filters.state
             params["state_full"] = state_full
         if filters.category:
-            conditions.append("EXISTS (SELECT 1 FROM unnest(e.categories) c WHERE LOWER(c) = LOWER(:category))")
+            # Use array overlap operator so PostgreSQL can use the GIN index on categories.
+            # Normalise to lowercase on both sides since categories are mixed-case in DB.
+            conditions.append(
+                "array(SELECT LOWER(x) FROM unnest(e.categories) x) @> ARRAY[LOWER(:category)]"
+            )
             params["category"] = filters.category
         if filters.is_online is not None:
             conditions.append("e.is_online = :is_online")
@@ -157,16 +161,7 @@ class EventQueryRepository:
             # "baseball games Sports" → "baseball OR games OR Sports"
             # → websearch_to_tsquery produces 'baseball' | 'game' | 'sport'
             kw_or = " OR ".join(filters.keywords.split())
-            conditions.append(
-                "to_tsvector('english',"
-                "  COALESCE(e.event_name, '') || ' '"
-                "  || COALESCE(e.description, '') || ' '"
-                "  || array_to_string(e.categories, ' ') || ' '"
-                "  || COALESCE(e.city, '') || ' '"
-                "  || COALESCE(e.state, '') || ' '"
-                "  || COALESCE(e.formatted_address, '')"
-                ") @@ websearch_to_tsquery('english', :keywords)"
-            )
+            conditions.append("e.search_vector @@ websearch_to_tsquery('english', :keywords)")
             params["keywords"] = kw_or
         if filters.start_date:
             conditions.append("e.start_time >= :start_date")
@@ -187,7 +182,7 @@ class EventQueryRepository:
                 result = await session.execute(text("""
                     SELECT * FROM events
                     WHERE is_archived = FALSE
-                    ORDER BY start_time ASC NULLS LAST
+                    ORDER BY start_time ASC NULLS LAST, event_id ASC
                     LIMIT 5000
                 """))
                 return [row_to_event_dict(row) for row in result.fetchall()]
@@ -228,7 +223,7 @@ class EventQueryRepository:
                     WHERE is_archived = FALSE
                       AND LOWER(city) = LOWER(:city) AND LOWER(state) = LOWER(:state)
                       AND origin = 'external'
-                    ORDER BY start_time ASC NULLS LAST
+                    ORDER BY start_time ASC NULLS LAST, event_id ASC
                     LIMIT 200
                 """), {"city": city, "state": state})
                 return [row_to_event_dict(row) for row in result.fetchall()]
@@ -269,7 +264,11 @@ class EventQueryRepository:
             async with AsyncSessionLocal() as session:
                 result = await session.execute(text("""
                     DELETE FROM events
-                    WHERE is_archived = TRUE AND start_time < :today
+                    WHERE event_id IN (
+                        SELECT event_id FROM events
+                        WHERE is_archived = TRUE AND start_time < :today
+                        LIMIT 5000
+                    )
                 """), {"today": today})
                 await session.commit()
                 count = result.rowcount

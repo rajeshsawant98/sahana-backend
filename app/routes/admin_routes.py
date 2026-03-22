@@ -70,7 +70,7 @@ async def fetch_all_users(
             has_previous=result.has_previous
         )
     else:
-        users = await get_all_users()
+        users = await get_all_users()  # capped at 1000 in repo
         if users:
             return {"users": users}
         raise HTTPExceptionHelper.not_found("No users found")   
