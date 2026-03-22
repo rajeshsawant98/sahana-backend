@@ -316,19 +316,9 @@ async def get_events_organized_by_user_paginated(email: str, cursor_params: Curs
 async def get_user_interested_events_paginated(email: str, cursor_params: CursorPaginationParams) -> EventCursorPaginatedResponse:
     """Get cursor-paginated events user has RSVP'd as 'interested'"""
     try:
-        events, next_cursor = await event_rsvp_service.get_user_rsvps_paginated(email, cursor_params)
-        def is_event_dict(e):
-            return isinstance(e, dict) and "rsvpList" in e and isinstance(e["rsvpList"], list)
-
-        def has_interested_rsvp(e):
-            return any(
-                isinstance(rsvp, dict) and rsvp.get("email") == email and rsvp.get("status") == "interested"
-                for rsvp in e.get("rsvpList", []) if isinstance(e, dict)
-            )
-
-        filtered_events = [e for e in events if is_event_dict(e) and has_interested_rsvp(e)]
+        events, next_cursor = await event_rsvp_service.get_user_rsvps_paginated(email, cursor_params, status="interested")
         return EventCursorPaginatedResponse.create(
-            items=filtered_events,
+            items=events,
             next_cursor=next_cursor,
             prev_cursor=None,
             has_next=bool(next_cursor),
@@ -376,30 +366,23 @@ async def get_rsvp_response_data(event_id: str, user_email: str, action: str) ->
         }
     }
 
-async def get_paginated_rsvp_list(event_id: str, page: Optional[int] = None, page_size: int = 10) -> dict:
-    """Get paginated RSVP list - centralized pagination logic"""
+async def get_paginated_rsvp_list(event_id: str, page: int = 1, page_size: int = 10) -> dict:
+    """Get paginated RSVP list for an event."""
     rsvp_list = await event_rsvp_service.get_rsvp_list(event_id)
-    if page is not None:
-        total_count = len(rsvp_list)
-        start_idx = (page - 1) * page_size
-        end_idx = start_idx + page_size
-        paginated_rsvps = rsvp_list[start_idx:end_idx]
-        return {
-            "items": paginated_rsvps,
-            "pagination": {
-                "page": page,
-                "page_size": page_size,
-                "total": total_count,
-                "total_pages": (total_count + page_size - 1) // page_size,
-                "has_next": end_idx < total_count,
-                "has_prev": page > 1
-            }
+    total_count = len(rsvp_list)
+    start_idx = (page - 1) * page_size
+    end_idx = start_idx + page_size
+    return {
+        "items": rsvp_list[start_idx:end_idx],
+        "pagination": {
+            "page": page,
+            "page_size": page_size,
+            "total": total_count,
+            "total_pages": (total_count + page_size - 1) // page_size,
+            "has_next": end_idx < total_count,
+            "has_prev": page > 1,
         }
-    else:
-        return {
-            "rsvp_list": rsvp_list,
-            "total_count": len(rsvp_list)
-        }
+    }
 
 async def archive_event_with_validation(event_id: str, archived_by: str, reason: str = "Event archived") -> dict:
     """Archive event with business logic validation and response formatting"""

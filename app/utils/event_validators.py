@@ -39,64 +39,13 @@ class EventValidator:
         if event.get("isArchived", False):
             raise ValueError("Cannot perform action on archived event")
     
-    @staticmethod
-    def validate_user_not_rsvped(event: Dict[str, Any], email: str) -> None:
-        """
-        Validate that a user has not already RSVP'd to an event.
-        
-        Args:
-            event: Event dictionary
-            email: User email
-            
-        Raises:
-            ValueError: If user has already RSVP'd
-        """
-        rsvp_list = event.get("rsvpList", [])
-        if email in rsvp_list:
-            raise ValueError("You have already RSVP'd to this event")
-    
-    @staticmethod
-    def validate_user_has_rsvped(event: Dict[str, Any], email: str) -> None:
-        """
-        Validate that a user has RSVP'd to an event.
-        
-        Args:
-            event: Event dictionary
-            email: User email
-            
-        Raises:
-            ValueError: If user has not RSVP'd
-        """
-        rsvp_list = event.get("rsvpList", [])
-        found = any(rsvp.get("email") == email for rsvp in rsvp_list if isinstance(rsvp, dict))
-        if not found:
-            raise ValueError("You have not RSVP'd to this event")
     
     @staticmethod
     def validate_rsvp_preconditions(event: Dict[str, Any], email: str) -> None:
-        """
-        Validate all preconditions for RSVP action.
-        
-        Args:
-            event: Event dictionary
-            email: User email
-            
-        Raises:
-            ValueError: If any validation fails
-        """
+        """Validate preconditions for RSVP — duplicate check is handled by the DB upsert."""
         EventValidator.validate_not_archived(event)
-        EventValidator.validate_user_not_rsvped(event, email)
-    
+
     @staticmethod
     def validate_cancel_rsvp_preconditions(event: Dict[str, Any], email: str) -> None:
-        """
-        Validate all preconditions for cancelling RSVP.
-        
-        Args:
-            event: Event dictionary
-            email: User email
-            
-        Raises:
-            ValueError: If any validation fails
-        """
-        EventValidator.validate_user_has_rsvped(event, email)
+        """Validate preconditions for cancel RSVP — existence check is handled by DELETE rowcount."""
+        EventValidator.validate_not_archived(event)

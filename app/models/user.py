@@ -1,5 +1,5 @@
-from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 
@@ -37,11 +37,13 @@ class Location(BaseModel):
     name: Optional[str] = None
 
 class User(BaseModel):
-    """Base User model matching Firestore schema"""
+    """Base User model"""
+    model_config = ConfigDict(from_attributes=True)
+
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
-    password: str  # Hashed password stored in Firestore
-    interests: Optional[List[str]] = Field(default=[])
+    password: str  # Hashed password
+    interests: Optional[List[str]] = Field(default_factory=list)
     profession: Optional[str] = Field(default="", max_length=100)
     bio: Optional[str] = Field(default="", max_length=500)
     phoneNumber: Optional[str] = Field(default="", max_length=20)
@@ -53,16 +55,15 @@ class User(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
-    @validator('interests', pre=True, always=True)
+    @field_validator('interests', mode='before')
+    @classmethod
     def validate_interests(cls, v):
         return _validate_interests(v)
 
-    @validator('birthdate')
+    @field_validator('birthdate')
+    @classmethod
     def validate_birthdate(cls, v):
         return _validate_birthdate(v)
-
-    class Config:
-        from_attributes = True
 
 class UserCreate(BaseModel):
     """Model for creating new users"""
@@ -74,15 +75,17 @@ class UserCreate(BaseModel):
     birthdate: Optional[str] = Field(default="")
     profession: Optional[str] = Field(default="", max_length=100)
     profile_picture: Optional[str] = Field(default="")
-    interests: Optional[List[str]] = Field(default=[])
+    interests: Optional[List[str]] = Field(default_factory=list)
     location: Optional[Location] = None
     role: Optional[UserRole] = Field(default=UserRole.USER)
 
-    @validator('interests', pre=True, always=True)
+    @field_validator('interests', mode='before')
+    @classmethod
     def validate_interests(cls, v):
         return _validate_interests(v)
 
-    @validator('birthdate')
+    @field_validator('birthdate')
+    @classmethod
     def validate_birthdate(cls, v):
         return _validate_birthdate(v)
 
@@ -97,32 +100,33 @@ class UserUpdate(BaseModel):
     interests: Optional[List[str]] = None
     location: Optional[Location] = None
 
-    @validator('interests', pre=True)
+    @field_validator('interests', mode='before')
+    @classmethod
     def validate_interests(cls, v):
         return _validate_interests(v, allow_none=True)
 
-    @validator('birthdate')
+    @field_validator('birthdate')
+    @classmethod
     def validate_birthdate(cls, v):
         return _validate_birthdate(v)
 
 class UserResponse(BaseModel):
     """Model for API responses (excludes password)"""
+    model_config = ConfigDict(from_attributes=True)
+
     name: str
     email: EmailStr
     phoneNumber: Optional[str] = ""
     bio: Optional[str] = ""
     birthdate: Optional[str] = ""
     profession: Optional[str] = ""
-    interests: Optional[List[str]] = []
+    interests: Optional[List[str]] = Field(default_factory=list)
     role: UserRole
     profile_picture: Optional[str] = ""
     location: Optional[Location] = None
     google_uid: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
 
 class UserProfile(BaseModel):
     """Public user profile for search results and friend lists"""

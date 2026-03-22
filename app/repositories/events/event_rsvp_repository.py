@@ -185,13 +185,19 @@ class EventRsvpRepository:
             return []
 
     async def get_user_rsvps_paginated(
-        self, user_email: str, cursor_params: Optional[CursorPaginationParams] = None
+        self, user_email: str, cursor_params: Optional[CursorPaginationParams] = None,
+        status: Optional[str] = None
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Cursor-paginated RSVPs for a user — replaces full scan + in-memory sort."""
+        """Cursor-paginated RSVPs for a user, optionally filtered by status."""
         try:
             page_size = cursor_params.page_size if cursor_params else 20
             params: Dict[str, Any] = {"email": user_email, "limit": page_size + 1}
             cursor_clause = ""
+            status_clause = ""
+
+            if status:
+                status_clause = "AND r.status = :status"
+                params["status"] = status
 
             if cursor_params and cursor_params.cursor:
                 cursor_info = CursorInfo.decode(cursor_params.cursor)
@@ -210,6 +216,7 @@ class EventRsvpRepository:
                     JOIN rsvps r ON r.event_id = e.event_id
                     WHERE r.user_email = :email
                       AND e.is_archived = FALSE
+                      {status_clause}
                       {cursor_clause}
                     ORDER BY e.start_time ASC, e.event_id ASC
                     LIMIT :limit

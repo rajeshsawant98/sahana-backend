@@ -11,7 +11,7 @@ async def init_redis() -> None:
     global _redis_client
     url = os.getenv("REDIS_URL")
     if not url:
-        logger.warning("REDIS_URL not set — Redis disabled, falling back to file cache / Firestore dedup")
+        logger.warning("REDIS_URL not set — Redis disabled, queries will hit PostgreSQL directly")
         return
     try:
         import redis.asyncio as aioredis

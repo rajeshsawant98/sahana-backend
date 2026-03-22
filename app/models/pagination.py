@@ -95,19 +95,20 @@ class CursorPaginatedResponse(BaseModel, Generic[T]):
     """Cursor-based paginated response"""
     items: List[T]
     pagination: Dict[str, Any]
-    
+
     @classmethod
-    def create(cls, items: List[T], next_cursor: Optional[str], prev_cursor: Optional[str], 
+    def create(cls, items: List[T], next_cursor: Optional[str], prev_cursor: Optional[str],
                has_next: bool, has_previous: bool, page_size: int):
-        pagination_info = {
-            "next_cursor": next_cursor,
-            "prev_cursor": prev_cursor,
-            "has_next": has_next,
-            "has_previous": has_previous,
-            "page_size": page_size
-        }
-            
-        return cls(items=items, pagination=pagination_info)
+        return cls(
+            items=items,
+            pagination={
+                "next_cursor": next_cursor,
+                "prev_cursor": prev_cursor,
+                "has_next": has_next,
+                "has_previous": has_previous,
+                "page_size": page_size,
+            },
+        )
 
 class EventCursorPaginatedResponse(CursorPaginatedResponse[dict]):
     """Specific cursor-based paginated response for events"""

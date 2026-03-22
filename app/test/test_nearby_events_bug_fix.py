@@ -1,11 +1,11 @@
 """
 Tests for the nearby events cursor-pagination endpoint.
-Replaces the old offset-pagination assertions.
 """
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock
 from app.main import app
+from app.models.pagination import EventCursorPaginatedResponse
 
 client = TestClient(app)
 
@@ -18,15 +18,15 @@ MOCK_EVENT = {
 }
 
 
-def _nearby_response(items, has_next=False, page_size=10):
-    return {
-        "items": items,
-        "next_cursor": "next-token" if has_next else None,
-        "prev_cursor": None,
-        "has_next": has_next,
-        "has_previous": False,
-        "page_size": page_size,
-    }
+def _nearby_response(items, has_next=False, next_cursor=None, page_size=10):
+    return EventCursorPaginatedResponse.create(
+        items=items,
+        next_cursor=next_cursor,
+        prev_cursor=None,
+        has_next=has_next,
+        has_previous=False,
+        page_size=page_size,
+    )
 
 
 def test_nearby_events_returns_cursor_shape():
@@ -43,9 +43,10 @@ def test_nearby_events_returns_cursor_shape():
     assert response.status_code == 200
     data = response.json()
     assert "items" in data
-    assert "has_next" in data
-    assert "has_previous" in data
-    assert "next_cursor" in data
+    assert "pagination" in data
+    assert "has_next" in data["pagination"]
+    assert "has_previous" in data["pagination"]
+    assert "next_cursor" in data["pagination"]
     # Old offset fields absent
     assert "total_count" not in data
     assert "page" not in data
@@ -53,7 +54,7 @@ def test_nearby_events_returns_cursor_shape():
 
 
 def test_nearby_events_returns_events_in_items():
-    """Events are nested under 'items', not 'events'."""
+    """Events are nested under 'items'."""
     with patch(
         "app.routes.event_routes.get_nearby_events_paginated",
         new_callable=AsyncMock,
@@ -73,15 +74,15 @@ def test_nearby_events_has_next_when_more_results():
     with patch(
         "app.routes.event_routes.get_nearby_events_paginated",
         new_callable=AsyncMock,
-        return_value=_nearby_response([MOCK_EVENT], has_next=True),
+        return_value=_nearby_response([MOCK_EVENT], has_next=True, next_cursor="next-token"),
     ):
         response = client.get(
             "/api/events/location/nearby?city=Phoenix&state=AZ&page_size=1"
         )
 
     data = response.json()
-    assert data["has_next"] is True
-    assert data["next_cursor"] is not None
+    assert data["pagination"]["has_next"] is True
+    assert data["pagination"]["next_cursor"] is not None
 
 
 def test_nearby_events_page_size_respected():
@@ -95,7 +96,7 @@ def test_nearby_events_page_size_respected():
             "/api/events/location/nearby?city=Phoenix&state=AZ&page_size=3"
         )
 
-    assert response.json()["page_size"] == 3
+    assert response.json()["pagination"]["page_size"] == 3
 
 
 def test_nearby_events_empty_city_returns_results():
@@ -111,4 +112,4 @@ def test_nearby_events_empty_city_returns_results():
 
     assert response.status_code == 200
     assert response.json()["items"] == []
-    assert response.json()["has_next"] is False
+    assert response.json()["pagination"]["has_next"] is False

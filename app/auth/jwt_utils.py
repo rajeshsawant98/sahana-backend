@@ -22,7 +22,7 @@ ALGORITHM = "HS256"
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # Function to generate Access Token
-def create_access_token(data: dict, expires_in_minutes: int = 1) -> str:
+def create_access_token(data: dict, expires_in_minutes: int = 60) -> str:
     expiration_time = datetime.utcnow() + timedelta(minutes=expires_in_minutes)
     token = jwt.encode(
         {"data": data, "exp": expiration_time},

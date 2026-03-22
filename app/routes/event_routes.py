@@ -9,8 +9,6 @@ from app.services.event_service import (
     update_event,
     delete_event,
     get_my_events_paginated,
-    rsvp_to_event,
-    cancel_user_rsvp,
     get_user_rsvps_paginated,
     get_nearby_events_paginated,
     set_organizers,
@@ -18,7 +16,6 @@ from app.services.event_service import (
     unarchive_event,
     get_archived_events_paginated,
     archive_past_events,
-    get_rsvp_list,
     get_rsvp_response_data,
     get_paginated_rsvp_list,
     archive_event_with_validation,
@@ -210,7 +207,7 @@ async def fetch_user_moderated_events(
 ):
     try:
         email = current_user["email"]
-        return get_events_moderated_by_user_paginated(email, cursor_params)
+        return await get_events_moderated_by_user_paginated(email, cursor_params)
     except Exception as e:
         raise HTTPExceptionHelper.server_error(str(e))
     
