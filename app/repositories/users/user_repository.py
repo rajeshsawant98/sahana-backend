@@ -1,333 +1,319 @@
+from datetime import date
 from passlib.context import CryptContext
-from app.auth.firebase_init import get_firestore_client
-from app.models.pagination import PaginationParams, UserFilters, CursorPaginationParams, CursorInfo
+from sqlalchemy import text
+from typing import Any, Dict, List, Optional, Tuple
+
+from app.db.session import AsyncSessionLocal
+from app.models.pagination import CursorInfo, CursorPaginationParams, PaginationParams, UserFilters
 from app.utils.logger import get_service_logger
-from typing import Tuple, List, Optional
-from google.cloud.firestore_v1.base_query import FieldFilter
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+def _row_to_user_dict(row) -> Dict[str, Any]:
+    """Convert a DB row to the dict shape the service layer expects.
+    Preserves camelCase field names that Firestore used so the service layer
+    doesn't need to change in this phase.
+    """
+    d = dict(row._mapping)
+    # location nested object (service layer expects this shape)
+    d["location"] = {
+        "latitude": d.pop("latitude", None),
+        "longitude": d.pop("longitude", None),
+        "city": d.pop("city", None),
+        "state": d.pop("state", None),
+        "country": d.pop("country", None),
+        "formattedAddress": d.pop("formatted_address", None),
+        "name": d.pop("location_name", None),
+    }
+    # camelCase aliases expected by service layer
+    d["phoneNumber"] = d.pop("phone_number", None)
+    d["password"] = d.pop("password_hash", None)
+    d["id"] = d["email"]
+    # Convert date object → ISO string so UserResponse (str field) validates correctly
+    if d.get("birthdate") is not None and hasattr(d["birthdate"], "isoformat"):
+        d["birthdate"] = d["birthdate"].isoformat()
+    return d
+
+
 class UserRepository:
     def __init__(self):
-        self.db = get_firestore_client()
-        self.collection = self.db.collection("users")
         self.logger = get_service_logger(__name__)
-    
-    async def get_all_users(self):
+
+    # ─── Helpers ──────────────────────────────────────────────────────────────
+
+    def _build_filter_clause(self, filters: Optional[UserFilters]) -> Tuple[str, Dict[str, Any]]:
+        conditions, params = [], {}
+        if filters:
+            if filters.role:
+                conditions.append("role = :role")
+                params["role"] = filters.role
+            if filters.profession:
+                conditions.append("profession = :profession")
+                params["profession"] = filters.profession
+        clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        return clause, params
+
+    # ─── Read ─────────────────────────────────────────────────────────────────
+
+    async def get_all_users(self) -> List[Dict[str, Any]]:
         try:
-            users = []
-            async for doc in self.collection.stream():
-                user_data = doc.to_dict()
-                if user_data:
-                    user_data["id"] = doc.id  # Add document ID
-                    users.append(user_data)
-            return users
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("SELECT * FROM users"))
+                return [_row_to_user_dict(row) for row in result.fetchall()]
         except Exception as e:
-            self.logger.error(f"Error retrieving users: {str(e)}")
+            self.logger.error(f"Error retrieving users: {e}")
             return []
 
-    async def get_all_users_paginated(self, pagination: PaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], int]:
-        """Get paginated users with optional filters"""
+    async def get_all_users_paginated(
+        self, pagination: PaginationParams, filters: Optional[UserFilters] = None
+    ) -> Tuple[List[Dict[str, Any]], int]:
         try:
-            query = self.collection
-            
-            # Apply filters if provided
-            if filters:
-                if filters.role:
-                    query = query.where(filter=FieldFilter("role", "==", filters.role))
-                if filters.profession:
-                    query = query.where(filter=FieldFilter("profession", "==", filters.profession))
-            
-            # Order by email for consistent pagination
-            query = query.order_by("email")
-            
-            # Get total count - inefficient but works for now
-            # Ideally use aggregation query
-            all_docs = await query.get()
-            total_count = len(all_docs)
-            
-            # Apply pagination
-            query_paginated = query.offset(pagination.offset).limit(pagination.page_size)
-            users = [user.to_dict() async for user in query_paginated.stream()]
-            
-            return users, total_count
+            where, params = self._build_filter_clause(filters)
+            params["limit"] = pagination.page_size
+            params["offset"] = pagination.offset
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text(f"""
+                    SELECT *, COUNT(*) OVER() AS _total
+                    FROM users
+                    {where}
+                    ORDER BY email
+                    LIMIT :limit OFFSET :offset
+                """), params)
+                rows = result.fetchall()
+                total = rows[0]._mapping["_total"] if rows else 0
+                users = []
+                for row in rows:
+                    d = _row_to_user_dict(row)
+                    d.pop("_total", None)
+                    users.append(d)
+                return users, total
         except Exception as e:
-            self.logger.error(f"Error retrieving paginated users: {str(e)}")
+            self.logger.error(f"Error retrieving paginated users: {e}")
             return [], 0
 
-    async def get_all_users_cursor_paginated(self, cursor_params: CursorPaginationParams, filters: Optional[UserFilters] = None) -> Tuple[List[dict], Optional[str], Optional[str], bool, bool]:
-        """Get cursor-paginated users with optional filters"""
+    async def get_all_users_cursor_paginated(
+        self, cursor_params: CursorPaginationParams, filters: Optional[UserFilters] = None
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str], bool, bool]:
         try:
-            # Parse cursor
             cursor_info = None
             if cursor_params.cursor:
                 cursor_info = CursorInfo.decode(cursor_params.cursor)
                 if not cursor_info:
                     raise ValueError("Invalid cursor format")
-            
-            # Build query
-            query = self.collection.limit(1000000)
-            
-            # Apply filters if provided
-            if filters:
-                if filters.role:
-                    query = query.where(filter=FieldFilter("role", "==", filters.role))
-                if filters.profession:
-                    query = query.where(filter=FieldFilter("profession", "==", filters.profession))
-            
-            # Apply cursor-based filtering (using email as sort field)
-            if cursor_info:
+
+            where_parts = []
+            params: Dict[str, Any] = {"limit": cursor_params.page_size + 1}
+
+            filter_clause, filter_params = self._build_filter_clause(filters)
+            params.update(filter_params)
+            if filter_clause:
+                where_parts.append(filter_clause.replace("WHERE ", ""))
+
+            if cursor_info and cursor_info.start_time:
                 if cursor_params.direction == "next":
-                    if cursor_info.start_time:  # Using start_time field for email
-                        query = query.where(filter=FieldFilter("email", ">", cursor_info.start_time))
-                else:  # direction == "prev"
-                    if cursor_info.start_time:
-                        query = query.where(filter=FieldFilter("email", "<", cursor_info.start_time))
-            
-            # Order by email for consistent pagination
-            query = query.order_by("email")
-            
-            # Fetch items with appropriate limits
-            fetch_limit = cursor_params.page_size + 1
-            if cursor_info:
-                fetch_limit = min(cursor_params.page_size * 3, 100)
-            
-            query = query.limit(fetch_limit)
-            
-            # Execute query
-            docs = await query.get()
-            users = []
-            for doc in docs:
-                user_data = doc.to_dict()
-                if user_data:
-                    user_data["id"] = doc.id
-                    users.append(user_data)
-            
-            # Apply cursor filtering for exact positioning
-            if cursor_info:
-                filtered_users = []
-                for user in users:
-                    user_email = user.get("email", "")
-                    if cursor_params.direction == "next":
-                        if user_email > (cursor_info.start_time or ""):
-                            filtered_users.append(user)
-                    else:  # direction == "prev"
-                        if user_email < (cursor_info.start_time or ""):
-                            filtered_users.append(user)
-                users = filtered_users
-            
-            # Handle pagination logic
+                    where_parts.append("email > :cursor_email")
+                else:
+                    where_parts.append("email < :cursor_email")
+                params["cursor_email"] = cursor_info.start_time
+
+            where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+            order = "ASC" if cursor_params.direction == "next" else "DESC"
+
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text(f"""
+                    SELECT * FROM users
+                    {where}
+                    ORDER BY email {order}
+                    LIMIT :limit
+                """), params)
+                rows = result.fetchall()
+
+            users = [_row_to_user_dict(row) for row in rows]
+
             if cursor_params.direction == "prev":
-                has_more = len(users) > cursor_params.page_size
-                if has_more:
-                    users = users[-cursor_params.page_size:]
-                has_next = cursor_params.cursor is not None
-                has_previous = has_more
-            else:
-                has_more = len(users) > cursor_params.page_size
-                if has_more:
+                users.reverse()
+
+            has_more = len(users) > cursor_params.page_size
+            if has_more:
+                if cursor_params.direction == "next":
                     users = users[:cursor_params.page_size]
-                has_next = has_more
-                has_previous = cursor_params.cursor is not None
-            
-            # Generate cursors
-            next_cursor = None
-            prev_cursor = None
-            
+                else:
+                    users = users[-cursor_params.page_size:]
+
+            has_next = has_more if cursor_params.direction == "next" else cursor_params.cursor is not None
+            has_prev = cursor_params.cursor is not None if cursor_params.direction == "next" else has_more
+
+            next_cursor = prev_cursor = None
             if users:
-                first_user = users[0]
-                last_user = users[-1]
-                
                 if has_next:
                     next_cursor = CursorInfo(
-                        start_time=last_user["email"],
-                        event_id=last_user["id"]
+                        start_time=users[-1]["email"], event_id=users[-1]["email"]
                     ).encode()
-                
-                if has_previous:
+                if has_prev:
                     prev_cursor = CursorInfo(
-                        start_time=first_user["email"], 
-                        event_id=first_user["id"]
+                        start_time=users[0]["email"], event_id=users[0]["email"]
                     ).encode()
-            
-            return users, next_cursor, prev_cursor, has_next, has_previous
-            
+
+            return users, next_cursor, prev_cursor, has_next, has_prev
+
         except Exception as e:
             self.logger.error(f"Error in users cursor pagination: {e}", exc_info=True)
             return [], None, None, False, False
 
-    async def get_by_email(self, email: str):
+    async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         try:
-            query = self.collection.where(filter=FieldFilter("email", "==", email)).limit(1).stream()
-            user = None
-            async for doc in query:
-                user = doc
-                break
-            
-            if user:
-                user_data = user.to_dict()
-                if user_data:  # Check that user_data is not None
-                    user_data["id"] = user.id  # Include the document ID
-                    return user_data
-            return None
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("SELECT * FROM users WHERE email = :email"),
+                    {"email": email}
+                )
+                row = result.fetchone()
+                return _row_to_user_dict(row) if row else None
         except Exception as e:
-            self.logger.error(f"Error retrieving user: {str(e)}")
+            self.logger.error(f"Error retrieving user: {e}")
             return None
 
-    async def get_by_id(self, uid: str):
+    async def get_by_id(self, uid: str) -> Optional[Dict[str, Any]]:
+        """uid is email (Firestore used email as document ID)."""
+        return await self.get_by_email(uid)
+
+    async def verify_password(self, email: str, password: str) -> bool:
         try:
-            doc = await self.collection.document(uid).get()
-            if doc.exists:
-                user_data = doc.to_dict()
-                if user_data:
-                    user_data["id"] = doc.id  # Include the document ID
-                    return user_data
-            return None
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("SELECT password_hash FROM users WHERE email = :email"),
+                    {"email": email}
+                )
+                row = result.fetchone()
+                if not row or not row.password_hash:
+                    return False
+                return pwd_context.verify(password, row.password_hash)
         except Exception as e:
-            self.logger.error(f"Error retrieving user by ID: {str(e)}")
-            return None
-
-    async def create_with_password(self, email: str, password: str, name: str):
-        try:
-            hashed_password = pwd_context.hash(password)
-            await self.collection.document(email).set({
-                "name": name,
-                "email": email,
-                "password": hashed_password,
-                "role": "user"
-            })
-            self.logger.info(f"User with email {email} stored successfully")
-        except Exception as e:
-            self.logger.error(f"Error storing user with password: {str(e)}")
-
-    async def verify_password(self, email: str, password: str):
-        try:
-            user_doc = await self.collection.document(email).get()
-            if not user_doc.exists:
-                return False
-
-            user = user_doc.to_dict()
-            if not user or "password" not in user:
-                return False
-
-            return pwd_context.verify(password, user["password"])
-        except Exception as e:
-            self.logger.error(f"Error verifying password: {str(e)}")
+            self.logger.error(f"Error verifying password: {e}")
             return False
 
-    async def store_google_user(self, user_data: dict):
-        try:
-            # Use email as document ID for all users (including Google users)
-            await self.collection.document(user_data["email"]).set({
-                "name": user_data["name"],
-                "email": user_data["email"],
-                "profile_picture": user_data["profile_picture"],
-                "google_uid": user_data.get("uid"),  # Store Google UID as a field for reference
-                "role": "user"
-            }, merge=True)
-            self.logger.info(f"User data stored for: {user_data['email']}")
-        except Exception as e:
-            self.logger.error(f"Error storing Google user: {str(e)}")
-
-    async def update_profile_by_email(self, user_data: dict, user_email: str):
-        try:
-            query = self.collection.where(filter=FieldFilter("email", "==", user_email)).limit(1).stream()
-            user = None
-            async for doc in query:
-                user = doc
-                break
-
-            if not user:
-                self.logger.warning(f"No user found with email: {user_email}")
-                return
-
-            user_ref = self.collection.document(user.id)
-            existing = user.to_dict() or {}
-
-            update_fields = {
-                "name": user_data.get("name", existing.get("name", "")),
-                "profile_picture": user_data.get("profile_picture", existing.get("profile_picture", "")),
-                "interests": user_data.get("interests", existing.get("interests", [])),
-                "profession": user_data.get("profession", existing.get("profession", "")),
-                "location": user_data.get("location", existing.get("location", "")),
-                "bio": user_data.get("bio", existing.get("bio", "")),
-                "phoneNumber": user_data.get("phoneNumber", existing.get("phoneNumber", "")),
-                "birthdate": user_data.get("birthdate", existing.get("birthdate", ""))
-            }
-
-            await user_ref.update(update_fields)
-            self.logger.info(f"User profile updated for: {user_email}")
-        except Exception as e:
-            self.logger.error(f"Error updating user data: {str(e)}")
-
-    async def search_users(self, search_term: str, exclude_email: str, limit: int = 20) -> List[dict]:
-        """Search for users by name or email, excluding the current user"""
-        try:
-            if not search_term or len(search_term.strip()) < 2:
-                return []
-            
-            search_term = search_term.strip().lower()
-            
-            # Get all users and filter in memory (for simplicity)
-            # In production, you might want to use Firestore's full-text search or Algolia
-            all_users = []
-            async for doc in self.collection.stream():
-                user_data = doc.to_dict()
-                if user_data and user_data.get("email") != exclude_email:
-                    # Add the document ID to user data (consistent with other methods)
-                    user_data["id"] = doc.id
-                    
-                    user_email = user_data.get("email", "").lower()
-                    user_name = user_data.get("name", "").lower()
-                    
-                    # Enhanced search: support multiple types of matching
-                    match_found = False
-                    match_score = 0  # Higher score = better match
-                    
-                    # 1. Exact name match (highest priority)
-                    if search_term == user_name:
-                        match_found = True
-                        match_score = 100
-                    
-                    # 2. Name starts with search term (high priority)
-                    elif user_name.startswith(search_term):
-                        match_found = True
-                        match_score = 90
-                        
-                    # 3. Word-based matching (any word in name starts with search term)
-                    elif any(word.startswith(search_term) for word in user_name.split()):
-                        match_found = True
-                        match_score = 80
-                        
-                    # 4. Partial name match (contains search term)
-                    elif search_term in user_name:
-                        match_found = True
-                        match_score = 70
-                        
-                    # 5. Email matching (lower priority)
-                    elif search_term in user_email:
-                        match_found = True
-                        match_score = 50
-                    
-                    if match_found:
-                        user_data["_search_score"] = match_score
-                        all_users.append(user_data)
-                        
-                        # Limit results during collection (but we'll sort first)
-                        if len(all_users) >= limit * 3:  # Get more for better sorting
-                            break
-            
-            # Sort by relevance score (highest first)
-            all_users.sort(key=lambda x: x.get("_search_score", 0), reverse=True)
-            
-            # Remove search score and apply final limit
-            result_users = []
-            for user_data in all_users[:limit]:
-                if "_search_score" in user_data:
-                    del user_data["_search_score"]
-                result_users.append(user_data)
-            
-            return result_users
-        except Exception as e:
-            self.logger.error(f"Error searching users: {str(e)}")
+    async def search_users(self, search_term: str, exclude_email: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Search users by name or email using SQL — replaces full-table scan."""
+        if not search_term or len(search_term.strip()) < 2:
             return []
+        term = search_term.strip().lower()
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("""
+                    SELECT *,
+                        CASE
+                            WHEN lower(name)  = :term              THEN 100
+                            WHEN lower(name)  ILIKE :prefix        THEN 90
+                            WHEN lower(name)  ILIKE :any_word      THEN 80
+                            WHEN lower(name)  ILIKE :contains      THEN 70
+                            WHEN lower(email) ILIKE :contains      THEN 50
+                            ELSE 0
+                        END AS _score
+                    FROM users
+                    WHERE email != :exclude
+                      AND (
+                            lower(name)  ILIKE :contains
+                         OR lower(email) ILIKE :contains
+                      )
+                    ORDER BY _score DESC
+                    LIMIT :limit
+                """), {
+                    "term": term,
+                    "prefix": term + "%",
+                    "any_word": "% " + term + "%",
+                    "contains": "%" + term + "%",
+                    "exclude": exclude_email,
+                    "limit": limit,
+                })
+                users = []
+                for row in result.fetchall():
+                    d = _row_to_user_dict(row)
+                    d.pop("_score", None)
+                    users.append(d)
+                return users
+        except Exception as e:
+            self.logger.error(f"Error searching users: {e}")
+            return []
+
+    # ─── Write ────────────────────────────────────────────────────────────────
+
+    async def create_with_password(self, email: str, password: str, name: str) -> None:
+        try:
+            hashed = pwd_context.hash(password)
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("""
+                    INSERT INTO users (email, name, password_hash, role)
+                    VALUES (:email, :name, :hash, 'user')
+                    ON CONFLICT (email) DO NOTHING
+                """), {"email": email, "name": name, "hash": hashed})
+                await session.commit()
+            self.logger.info(f"User {email} created.")
+        except Exception as e:
+            self.logger.error(f"Error creating user: {e}")
+
+    async def store_google_user(self, user_data: Dict[str, Any]) -> None:
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("""
+                    INSERT INTO users (email, name, profile_picture, google_uid, role)
+                    VALUES (:email, :name, :pic, :uid, 'user')
+                    ON CONFLICT (email) DO UPDATE SET
+                        name            = EXCLUDED.name,
+                        profile_picture = EXCLUDED.profile_picture,
+                        google_uid      = EXCLUDED.google_uid,
+                        updated_at      = NOW()
+                """), {
+                    "email": user_data["email"],
+                    "name": user_data["name"],
+                    "pic": user_data.get("profile_picture"),
+                    "uid": user_data.get("uid"),
+                })
+                await session.commit()
+            self.logger.info(f"Google user stored: {user_data['email']}")
+        except Exception as e:
+            self.logger.error(f"Error storing Google user: {e}")
+
+    async def update_profile_by_email(self, user_data: Dict[str, Any], user_email: str) -> None:
+        try:
+            loc = user_data.get("location") or {}
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("""
+                    UPDATE users SET
+                        name              = COALESCE(:name, name),
+                        profile_picture   = COALESCE(:profile_picture, profile_picture),
+                        interests         = COALESCE(:interests, interests),
+                        profession        = COALESCE(:profession, profession),
+                        bio               = COALESCE(:bio, bio),
+                        phone_number      = COALESCE(:phone_number, phone_number),
+                        birthdate         = COALESCE(:birthdate, birthdate),
+                        latitude          = COALESCE(:latitude, latitude),
+                        longitude         = COALESCE(:longitude, longitude),
+                        city              = COALESCE(:city, city),
+                        state             = COALESCE(:state, state),
+                        country           = COALESCE(:country, country),
+                        formatted_address = COALESCE(:formatted_address, formatted_address),
+                        location_name     = COALESCE(:location_name, location_name),
+                        updated_at        = NOW()
+                    WHERE email = :email
+                """), {
+                    "email": user_email,
+                    "name": user_data.get("name"),
+                    "profile_picture": user_data.get("profile_picture"),
+                    "interests": user_data.get("interests"),
+                    "profession": user_data.get("profession"),
+                    "bio": user_data.get("bio"),
+                    "phone_number": user_data.get("phoneNumber"),
+                    "birthdate": date.fromisoformat(user_data["birthdate"]) if user_data.get("birthdate") else None,
+                    "latitude": loc.get("latitude"),
+                    "longitude": loc.get("longitude"),
+                    "city": loc.get("city"),
+                    "state": loc.get("state"),
+                    "country": loc.get("country"),
+                    "formatted_address": loc.get("formattedAddress"),
+                    "location_name": loc.get("name"),
+                })
+                await session.commit()
+            self.logger.info(f"Profile updated: {user_email}")
+        except Exception as e:
+            self.logger.error(f"Error updating user profile: {e}")

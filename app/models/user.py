@@ -2,7 +2,6 @@ from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from enum import Enum
-from google.cloud import firestore  # Firestore library
 
 
 def _validate_interests(v, *, allow_none: bool = False):

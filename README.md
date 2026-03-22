@@ -10,7 +10,7 @@ FastAPI backend for **Sahana** — a social meetup and event discovery platform.
 | -------------- | ----------------------------------------------------- |
 | API            | FastAPI + Uvicorn                                     |
 | Auth           | Firebase Authentication (email/password + Google SSO) |
-| Database       | Firestore                                           |
+| Database       | PostgreSQL (Neon serverless) + pgvector             |
 | Cache          | Redis (Upstash)                                     |
 | Ingestion      | Ticketmaster API                                    |
 | Infrastructure | Docker, Cloud Run (us-west1), Cloud Scheduler       |
@@ -47,8 +47,9 @@ GOOGLE_CLIENT_ID=
 GOOGLE_MAPS_API_KEY=
 TICKETMASTER_API_KEY=
 REDIS_URL=rediss://default:<token>@<host>.upstash.io:6379
+DATABASE_URL=postgresql://neondb_owner:<password>@<host>.neon.tech/neondb?sslmode=require
 
-# Local Firebase
+# Firebase Auth (JWT verification only)
 GOOGLE_APPLICATION_CREDENTIALS=firebase_cred.json
 
 # Cloud Run Firebase (via Secret Manager)
@@ -69,7 +70,7 @@ sahana-backend/
 │   ├── models/             # Pydantic request/response models
 │   ├── routes/             # API route handlers
 │   ├── services/           # Business logic
-│   ├── repositories/       # Firestore data access (repository pattern)
+│   ├── repositories/       # PostgreSQL data access (repository pattern)
 │   │   ├── events/         # Specialized event repositories + facade
 │   │   ├── friends/        # Friend system repositories
 │   │   └── users/          # User repositories
@@ -138,10 +139,11 @@ The ingestion pipeline:
 
 1. Acquires a Redis mutex to prevent duplicate concurrent runs
 2. Fetches Ticketmaster events per unique user city (Redis-cached 8 hrs)
-3. Deduplicates against Firestore via Redis SET (fast path) then Firestore (fallback)
-4. Saves new events to Firestore and invalidates the event query cache
+3. Deduplicates via Redis SET (fast path) then `original_id` UNIQUE index in
+   Postgres (fallback)
+4. Saves new events to Postgres and invalidates the event query cache
 
-Redis degrades gracefully — if unavailable, all operations fall back to Firestore.
+Redis degrades gracefully — if unavailable, Postgres dedup still prevents duplicates.
 
 ---
 
@@ -172,9 +174,10 @@ CI/CD via GitHub Actions on push to `main`:
 3. Delete old GCR images (keep latest)
 4. Deploy to Cloud Run (`us-west1`)
 
-### Firestore Indexes
+### Database Schema
 
-Cursor pagination requires composite indexes. See [`docs/setup/FIRESTORE_INDEXES_CURSOR_PAGINATION.md`](docs/setup/FIRESTORE_INDEXES_CURSOR_PAGINATION.md).
+See [`migrations/001_initial_schema.sql`](migrations/001_initial_schema.sql) for
+the full PostgreSQL schema including indexes and triggers.
 
 ---
 

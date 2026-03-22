@@ -259,7 +259,7 @@ async def ingest_events_for_all_cities() -> dict:
         eb_results = dict(eb_pairs)
 
         # Phase 3 — Ingest merged results per city
-        logger.info("Phase 3: Ingesting into Firestore")
+        logger.info("Phase 3: Ingesting into Postgres")
         summary = []
         for city, state in locations:
             key = f"{city},{state}"

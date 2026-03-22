@@ -6,7 +6,8 @@ Get the Sahana Backend up and running in minutes.
 
 - Python 3.10 or higher
 - Git
-- Firebase project (for authentication and database)
+- Firebase project (for authentication only)
+- Neon PostgreSQL database (or any Postgres instance)
 
 ## Step 1: Clone and Setup
 
@@ -28,18 +29,23 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Step 2: Firebase Setup
+## Step 2: Firebase Setup (Auth only)
 
 1. Go to [Firebase Console](https://console.firebase.google.com/)
 2. Create a new project or use existing one
 3. Enable Authentication (Email/Password + Google)
-4. Enable Firestore Database
-5. Generate Firebase Admin SDK key:
+4. Generate Firebase Admin SDK key:
    - Go to Project Settings → Service Accounts
    - Click "Generate new private key"
    - Save as `firebase_cred.json` in project root
 
-## Step 3: Environment Configuration
+## Step 3: Database Setup
+
+1. Create a [Neon](https://neon.tech) project (free tier works)
+2. Run the schema: `psql $DATABASE_URL -f migrations/001_initial_schema.sql`
+3. Copy the connection string — you'll need it in `.env`
+
+## Step 4: Environment Configuration
 
 Create a `.env` file in the project root:
 
@@ -52,14 +58,17 @@ JWT_REFRESH_SECRET_KEY=your_refresh_secret_key_here
 GOOGLE_CLIENT_ID=your_google_client_id
 GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 
-# Firebase
+# Database (Neon PostgreSQL)
+DATABASE_URL=postgresql://user:password@host.neon.tech/neondb?sslmode=require
+
+# Firebase (Auth only)
 GOOGLE_APPLICATION_CREDENTIALS=firebase_cred.json
 
 # Optional: External APIs
 TICKETMASTER_API_KEY=your_ticketmaster_api_key
 ```
 
-## Step 4: Run the Server
+## Step 5: Run the Server
 
 ```bash
 uvicorn app.main:app --reload
@@ -67,7 +76,7 @@ uvicorn app.main:app --reload
 
 The server will start at `http://localhost:8000`
 
-## Step 5: Verify Installation
+## Step 6: Verify Installation
 
 1. **API Documentation**: Visit `http://localhost:8000/docs`
 2. **Health Check**: Visit `http://localhost:8000/health` (if implemented)
@@ -98,6 +107,9 @@ curl http://localhost:8000/events/
 **ImportError**: Make sure virtual environment is activated and dependencies are installed
 
 **Firebase Connection Error**: Verify `firebase_cred.json` is in the project root and valid
+
+**Database Connection Error**: Check `DATABASE_URL` is set and the schema has
+been applied (`psql $DATABASE_URL -f migrations/001_initial_schema.sql`)
 
 **Environment Variables**: Double-check `.env` file format and values
 

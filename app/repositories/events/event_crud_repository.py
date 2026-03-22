@@ -1,62 +1,180 @@
-from datetime import datetime
-from ..base_repository import BaseRepository
-from typing import Dict
+from typing import Any, Dict, List, Optional
+import uuid
 
-class EventCrudRepository(BaseRepository):
-    """Repository for basic CRUD operations on events"""
-    
+from sqlalchemy import text
+
+from app.db.session import AsyncSessionLocal
+from app.repositories.events.event_mapper import build_update_params, parse_datetime, row_to_event_dict
+from app.utils.logger import get_repository_logger
+
+
+class EventCrudRepository:
+    """Repository for basic CRUD operations on events."""
+
     def __init__(self):
-        super().__init__("events")
+        self.logger = get_repository_logger(__name__)
 
-    async def create_event(self, data: dict) -> dict:
-        """Create a new event"""
-        doc = self.collection.document()
-        event_id = doc.id
-        event_payload = {
-            "eventId": event_id,
-            "eventName": data["eventName"],
-            "location": data["location"],
-            "startTime": data["startTime"],
-            "duration": data["duration"],
-            "categories": data["categories"],
-            "isOnline": data.get("isOnline", False),
-            "joinLink": data.get("joinLink", ""),
-            "imageUrl": data.get("imageUrl", ""),
-            "createdBy": data["createdBy"],
-            "createdByEmail": data["createdByEmail"],
-            "organizers": data.get("organizers", []),
-            "moderators": data.get("moderators", []),
-            "createdAt": datetime.utcnow().isoformat(),
-            "description": data.get("description", "No description available"),
-            "rsvpList": [],
-            "origin": "community",
-            "source": "user",
-            # Archive fields
-            "isArchived": False,
-            "archivedAt": None,
-            "archivedBy": None,
-            "archiveReason": None
-        }
-        await doc.set(event_payload)
-        return {"eventId": event_id}
+    # ─── Helpers ──────────────────────────────────────────────────────────────
 
-    async def get_event_by_id(self, event_id: str) -> dict | None:
-        """Get event by ID"""
-        return await self.get_by_id(event_id)
+    async def _fetch_organizers(self, session, event_id: str) -> List[str]:
+        result = await session.execute(
+            text("SELECT user_email FROM event_organizers WHERE event_id = :eid"),
+            {"eid": event_id}
+        )
+        return [row.user_email for row in result.fetchall()]
 
-    async def update_event(self, event_id: str, update_data: dict) -> bool:
-        """Update an event"""
-        return await self.update_by_id(event_id, update_data)
+    async def _fetch_moderators(self, session, event_id: str) -> List[str]:
+        result = await session.execute(
+            text("SELECT user_email FROM event_moderators WHERE event_id = :eid"),
+            {"eid": event_id}
+        )
+        return [row.user_email for row in result.fetchall()]
+
+    async def _fetch_rsvp_list(self, session, event_id: str) -> List[Dict[str, Any]]:
+        result = await session.execute(
+            text("SELECT user_email, status, rating, review FROM rsvps WHERE event_id = :eid"),
+            {"eid": event_id}
+        )
+        rows = result.fetchall()
+        rsvps = []
+        for row in rows:
+            r = {"email": row.user_email, "status": row.status}
+            if row.rating is not None:
+                r["rating"] = row.rating
+            if row.review is not None:
+                r["review"] = row.review
+            rsvps.append(r)
+        return rsvps
+
+    # ─── CRUD ─────────────────────────────────────────────────────────────────
+
+    async def create_event(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        event_id = str(uuid.uuid4())
+        loc = data.get("location") or {}
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("""
+                    INSERT INTO events (
+                        event_id, event_name, description,
+                        latitude, longitude, city, state, country, formatted_address, location_name,
+                        start_time, duration, categories, is_online, join_link, image_url,
+                        created_by, created_by_email,
+                        origin, source,
+                        is_archived
+                    ) VALUES (
+                        :event_id, :event_name, :description,
+                        :latitude, :longitude, :city, :state, :country, :formatted_address, :location_name,
+                        :start_time, :duration, :categories, :is_online, :join_link, :image_url,
+                        :created_by, :created_by_email,
+                        'community', 'user',
+                        FALSE
+                    )
+                """), {
+                    "event_id":         event_id,
+                    "event_name":       data["eventName"],
+                    "description":      data.get("description", "No description available"),
+                    "latitude":         loc.get("latitude"),
+                    "longitude":        loc.get("longitude"),
+                    "city":             loc.get("city"),
+                    "state":            loc.get("state"),
+                    "country":          loc.get("country"),
+                    "formatted_address": loc.get("formattedAddress"),
+                    "location_name":    loc.get("name"),
+                    "start_time":       parse_datetime(data.get("startTime")),
+                    "duration":         data.get("duration"),
+                    "categories":       data.get("categories", []),
+                    "is_online":        data.get("isOnline", False),
+                    "join_link":        data.get("joinLink") or None,
+                    "image_url":        data.get("imageUrl") or None,
+                    "created_by":       data.get("createdBy"),
+                    "created_by_email": data.get("createdByEmail"),
+                })
+
+                # Organizers
+                for email in data.get("organizers") or []:
+                    await session.execute(text("""
+                        INSERT INTO event_organizers (event_id, user_email)
+                        VALUES (:eid, :email) ON CONFLICT DO NOTHING
+                    """), {"eid": event_id, "email": email})
+
+                # Moderators
+                for email in data.get("moderators") or []:
+                    await session.execute(text("""
+                        INSERT INTO event_moderators (event_id, user_email)
+                        VALUES (:eid, :email) ON CONFLICT DO NOTHING
+                    """), {"eid": event_id, "email": email})
+
+                await session.commit()
+            return {"eventId": event_id}
+        except Exception as e:
+            self.logger.error(f"Error creating event: {e}")
+            raise
+
+    async def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("SELECT * FROM events WHERE event_id = :eid"),
+                    {"eid": event_id}
+                )
+                row = result.fetchone()
+                if not row:
+                    return None
+                organizers = await self._fetch_organizers(session, event_id)
+                moderators = await self._fetch_moderators(session, event_id)
+                rsvp_list  = await self._fetch_rsvp_list(session, event_id)
+                return row_to_event_dict(row, organizers, moderators, rsvp_list)
+        except Exception as e:
+            self.logger.error(f"Error getting event {event_id}: {e}")
+            return None
+
+    async def update_event(self, event_id: str, update_data: Dict[str, Any]) -> bool:
+        params = build_update_params(update_data)
+        if not params:
+            return True
+
+        set_clause = ", ".join(f"{col} = :{col}" for col in params)
+        params["event_id"] = event_id
+        try:
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text(f"UPDATE events SET {set_clause}, updated_at = NOW() WHERE event_id = :event_id"),
+                    params
+                )
+                await session.commit()
+                return result.rowcount > 0
+        except Exception as e:
+            self.logger.error(f"Error updating event {event_id}: {e}")
+            return False
 
     async def delete_event(self, event_id: str) -> bool:
-        """Delete an event"""
-        return await self.delete_by_id(event_id)
-
-    async def update_event_roles(self, event_id: str, field: str, emails: list[str]) -> bool:
-        """Update event roles (organizers, moderators)"""
         try:
-            event_ref = self.collection.document(event_id)
-            await event_ref.update({field: emails})
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    text("DELETE FROM events WHERE event_id = :eid"),
+                    {"eid": event_id}
+                )
+                await session.commit()
+                return result.rowcount > 0
+        except Exception as e:
+            self.logger.error(f"Error deleting event {event_id}: {e}")
+            return False
+
+    async def update_event_roles(self, event_id: str, field: str, emails: List[str]) -> bool:
+        """Replace organizers or moderators list for an event."""
+        table = "event_organizers" if field == "organizers" else "event_moderators"
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(
+                    text(f"DELETE FROM {table} WHERE event_id = :eid"),
+                    {"eid": event_id}
+                )
+                for email in emails:
+                    await session.execute(text(f"""
+                        INSERT INTO {table} (event_id, user_email)
+                        VALUES (:eid, :email) ON CONFLICT DO NOTHING
+                    """), {"eid": event_id, "email": email})
+                await session.commit()
             return True
         except Exception as e:
             self.logger.error(f"Error updating {field} for event {event_id}: {e}")

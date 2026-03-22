@@ -26,7 +26,7 @@ The Sahana Backend follows Clean Architecture principles with a well-defined sep
 │             (Data Access)                       │
 ├─────────────────────────────────────────────────┤
 │               Database Layer                    │
-│            (Firebase Firestore)                 │
+│         (PostgreSQL via Neon + pgvector)        │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -34,7 +34,6 @@ The Sahana Backend follows Clean Architecture principles with a well-defined sep
 
 The repository layer uses a specialized repository pattern with:
 
-- **BaseRepository**: Common functionality and modular filters
 - **EventCrudRepository**: Basic CRUD operations
 - **EventQueryRepository**: Complex queries and filtering
 - **EventArchiveRepository**: Archive management

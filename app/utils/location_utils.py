@@ -2,21 +2,24 @@
 Location utilities for event ingestion
 """
 import json
-from app.auth.firebase_init import get_firestore_client
-from app.utils.logger import get_logger
-from app.utils.cache_keys import USER_LOCATIONS_KEY, TTL_USER_LOCATIONS
 from typing import List, Tuple
+
+from sqlalchemy import text
+
+from app.db.session import AsyncSessionLocal
+from app.utils.cache_keys import USER_LOCATIONS_KEY, TTL_USER_LOCATIONS
+from app.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 async def get_unique_user_locations(redis=None) -> List[Tuple[str, str]]:
     """
-    Get unique city/state combinations from user locations in Firestore.
+    Get unique city/state combinations from user locations.
     Used for targeted event ingestion.
 
-    Returns:
-        List of (city, state) tuples from user profiles
+    Replaces Firestore full-collection stream of 2K users
+    with a single SQL DISTINCT query on indexed columns.
     """
     if redis is not None:
         try:
@@ -26,27 +29,19 @@ async def get_unique_user_locations(redis=None) -> List[Tuple[str, str]]:
         except Exception:
             pass
 
-    db = get_firestore_client()
-    users_ref = db.collection("users")
-    users = users_ref.stream()
-
-    cities = set()
-    async for user in users:
-        data = user.to_dict()
-        loc = data.get("location", {})
-        if not isinstance(loc, dict):
-            logger.debug(f"Unexpected location type: {type(loc)} value: {loc}")
-        city = loc.get("city") if isinstance(loc, dict) else None
-        state = loc.get("state") if isinstance(loc, dict) else None
-        if city and state:
-            cities.add((city.strip(), state.strip()))
-
-    result = list(cities)
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(text("""
+            SELECT DISTINCT city, state
+            FROM users
+            WHERE city IS NOT NULL AND city <> ''
+              AND state IS NOT NULL AND state <> ''
+        """))
+        locations = [(row.city.strip(), row.state.strip()) for row in result.fetchall()]
 
     if redis is not None:
         try:
-            await redis.set(USER_LOCATIONS_KEY, json.dumps(result), ex=TTL_USER_LOCATIONS)
+            await redis.set(USER_LOCATIONS_KEY, json.dumps(locations), ex=TTL_USER_LOCATIONS)
         except Exception:
             pass
 
-    return result
+    return locations

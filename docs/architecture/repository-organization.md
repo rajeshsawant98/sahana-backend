@@ -7,7 +7,6 @@ This document describes the organized structure of the repository layer in the S
 ```
 app/repositories/
 ├── __init__.py                 # Main repository exports
-├── base_repository.py          # Shared functionality and filters
 │
 ├── events/                     # Event domain repositories
 │   ├── __init__.py
@@ -37,14 +36,11 @@ app/repositories/
 from app.repositories.events import EventRepositoryManager
 from app.repositories.events import EventCrudRepository  # If you need specific functionality
 
-# User repositories  
+# User repositories
 from app.repositories.users import UserRepository
 
 # Friend repositories
 from app.repositories.friends import FriendRepository
-
-# Base functionality
-from app.repositories import BaseRepository
 ```
 
 ### Backward Compatibility
@@ -86,12 +82,11 @@ from app.repositories import EventRepositoryManager, UserRepository, FriendRepos
 ✅ **Scalability** - Easy to add new repositories or split existing ones
 ✅ **Clean Imports** - Clear, organized import statements
 
-## Migration Notes
+## Database
 
-- All existing imports continue to work (backward compatibility maintained)
-- No breaking changes to service layer or routes
-- Deprecated monolithic `event_repository.py` has been removed
-- All functionality preserved through the organized structure
+All repositories use async SQLAlchemy + asyncpg against **Neon PostgreSQL**.
+Schema: [`migrations/001_initial_schema.sql`](../../migrations/001_initial_schema.sql).
+Firebase is retained for **Auth only** (JWT verification) — no Firestore reads/writes.
 
 ## Usage Examples
 
