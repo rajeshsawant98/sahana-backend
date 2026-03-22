@@ -7,6 +7,7 @@ from app.repositories.events import EventIngestionRepository
 from app.utils.event_parser import ticketmaster_to_sahana_format
 from app.services.event_scraping_service import get_eventbrite_events
 from app.utils.cache_utils import load_url_cache, save_url_cache
+from app.utils.geocoding import apply_geocode_fallback, has_valid_coordinates
 from app.utils.location_utils import get_unique_user_locations
 from app.utils.logger import get_service_logger
 from app.utils.redis_client import get_redis_client
@@ -62,6 +63,12 @@ def fetch_ticketmaster_events(city: str, state: str) -> List[dict]:
 # --- Ingestion Logic ---
 
 async def ingest_event(event: dict, redis=None) -> bool:
+    # Geocoding fallback for scraped events when coordinates are missing/invalid.
+    source = (event.get("source") or "").lower()
+    location = event.get("location")
+    if source in {"eventbrite", "ticketmaster"} and isinstance(location, dict) and not has_valid_coordinates(location):
+        event["location"] = await apply_geocode_fallback(location)
+
     original_id = event.get("originalId")
     if not original_id:
         return await repo.save_event(event)
