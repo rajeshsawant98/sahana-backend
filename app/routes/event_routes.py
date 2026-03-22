@@ -36,6 +36,7 @@ from app.auth.roles import user_only, admin_only
 from app.auth.event_roles import require_event_creator, require_event_organizer
 from app.models.event import event as EventCreateRequest
 from app.models.pagination import EventFilters, CursorPaginationParams
+from app.services.search_service import search_events
 from app.utils.pagination_helpers import get_cursor_pagination_params, get_event_filter_params
 from app.utils.http_exceptions import event_not_found, operation_failed, HTTPExceptionHelper
 from typing import Optional
@@ -73,6 +74,16 @@ async def fetch_all_events(
 ):
     filters = EventFilters(**filter_params)
     return await get_all_events_paginated(cursor_params, filters)
+
+# Natural language event search
+@event_router.get("/search")
+async def search_events_nl(
+    q: str = Query(..., description="Natural language search query, e.g. 'rock concerts in tempe'"),
+    cursor_params: CursorPaginationParams = Depends(get_cursor_pagination_params),
+):
+    """Search events using natural language. Parses city, category, date, and keywords automatically."""
+    return await search_events(q, cursor_params)
+
 
 # Get all events (non-paginated, for admin/analytics use)
 @event_router.get("/all")

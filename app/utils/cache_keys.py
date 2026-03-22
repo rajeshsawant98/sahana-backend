@@ -30,6 +30,11 @@ def event_query_cache_key(cursor_params: dict, filters: dict) -> str:
     return f"sahana:events:q:{digest}"
 
 
+def search_cache_key(query: str) -> str:
+    digest = hashlib.sha256(query.lower().strip().encode()).hexdigest()[:16]
+    return f"sahana:search:{digest}"
+
+
 def nearby_events_cache_key(city: str, state: str, cursor_params: dict) -> str:
     payload = json.dumps({"city": _slug(city), "state": _slug(state), "cursor": cursor_params}, sort_keys=True)
     digest = hashlib.sha256(payload.encode()).hexdigest()[:16]

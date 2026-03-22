@@ -23,7 +23,7 @@ async def flush_event_query_cache() -> None:
     if redis is None:
         return
     try:
-        for pattern in ("sahana:events:q:*", "sahana:events:nearby:*"):
+        for pattern in ("sahana:events:q:*", "sahana:events:nearby:*", "sahana:search:*"):
             cursor = 0
             while True:
                 cursor, keys = await redis.scan(cursor, match=pattern, count=100)

@@ -9,6 +9,23 @@ from app.repositories.events.event_mapper import parse_datetime, row_to_event_di
 from app.utils.logger import get_repository_logger
 
 
+_STATE_FULL_NAMES = {
+    "AL": "Alabama", "AK": "Alaska", "AZ": "Arizona", "AR": "Arkansas",
+    "CA": "California", "CO": "Colorado", "CT": "Connecticut", "DE": "Delaware",
+    "FL": "Florida", "GA": "Georgia", "HI": "Hawaii", "ID": "Idaho",
+    "IL": "Illinois", "IN": "Indiana", "IA": "Iowa", "KS": "Kansas",
+    "KY": "Kentucky", "LA": "Louisiana", "ME": "Maine", "MD": "Maryland",
+    "MA": "Massachusetts", "MI": "Michigan", "MN": "Minnesota", "MS": "Mississippi",
+    "MO": "Missouri", "MT": "Montana", "NE": "Nebraska", "NV": "Nevada",
+    "NH": "New Hampshire", "NJ": "New Jersey", "NM": "New Mexico", "NY": "New York",
+    "NC": "North Carolina", "ND": "North Dakota", "OH": "Ohio", "OK": "Oklahoma",
+    "OR": "Oregon", "PA": "Pennsylvania", "RI": "Rhode Island", "SC": "South Carolina",
+    "SD": "South Dakota", "TN": "Tennessee", "TX": "Texas", "UT": "Utah",
+    "VT": "Vermont", "VA": "Virginia", "WA": "Washington", "WV": "West Virginia",
+    "WI": "Wisconsin", "WY": "Wyoming", "DC": "District of Columbia",
+}
+
+
 class EventQueryRepository:
     """Repository for complex event queries and filtering operations."""
 
@@ -112,11 +129,20 @@ class EventQueryRepository:
             return "", {}
 
         if filters.city:
-            conditions.append("LOWER(e.city) = LOWER(:city)")
+            conditions.append(
+                "(LOWER(e.city) = LOWER(:city)"
+                " OR LOWER(COALESCE(e.formatted_address, '')) LIKE '%' || LOWER(:city) || '%')"
+            )
             params["city"] = filters.city
         if filters.state:
-            conditions.append("LOWER(e.state) = LOWER(:state)")
+            state_full = _STATE_FULL_NAMES.get(filters.state.upper(), filters.state)
+            conditions.append(
+                "(LOWER(e.state) = LOWER(:state)"
+                " OR LOWER(e.state) = LOWER(:state_full)"
+                " OR LOWER(COALESCE(e.formatted_address, '')) LIKE '%' || LOWER(:state_full) || '%')"
+            )
             params["state"] = filters.state
+            params["state_full"] = state_full
         if filters.category:
             conditions.append("EXISTS (SELECT 1 FROM unnest(e.categories) c WHERE LOWER(c) = LOWER(:category))")
             params["category"] = filters.category
@@ -126,6 +152,22 @@ class EventQueryRepository:
         if filters.creator_email:
             conditions.append("LOWER(e.created_by_email) = LOWER(:creator_email)")
             params["creator_email"] = filters.creator_email
+        if filters.keywords:
+            # Use OR between terms so any matching word is sufficient.
+            # "baseball games Sports" → "baseball OR games OR Sports"
+            # → websearch_to_tsquery produces 'baseball' | 'game' | 'sport'
+            kw_or = " OR ".join(filters.keywords.split())
+            conditions.append(
+                "to_tsvector('english',"
+                "  COALESCE(e.event_name, '') || ' '"
+                "  || COALESCE(e.description, '') || ' '"
+                "  || array_to_string(e.categories, ' ') || ' '"
+                "  || COALESCE(e.city, '') || ' '"
+                "  || COALESCE(e.state, '') || ' '"
+                "  || COALESCE(e.formatted_address, '')"
+                ") @@ websearch_to_tsquery('english', :keywords)"
+            )
+            params["keywords"] = kw_or
         if filters.start_date:
             conditions.append("e.start_time >= :start_date")
             params["start_date"] = parse_datetime(filters.start_date)

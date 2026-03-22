@@ -58,6 +58,7 @@ class EventFilters(BaseModel):
     creator_email: Optional[str] = None
     start_date: Optional[str] = None  # ISO format
     end_date: Optional[str] = None    # ISO format
+    keywords: Optional[str] = None   # free-text match against event_name + description
 
 class UserFilters(BaseModel):
     """Optional filters for user queries"""
