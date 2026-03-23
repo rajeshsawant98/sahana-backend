@@ -50,7 +50,9 @@ class EventQueryRepository:
         if cursor_params.cursor:
             cursor_info = CursorInfo.decode(cursor_params.cursor)
             if not cursor_info:
-                raise ValueError("Invalid cursor format")
+                # Unrecognized cursor format (e.g. semantic offset cursor sent to wrong endpoint)
+                self.logger.warning(f"Unrecognized cursor format, returning empty result")
+                return [], None, None, False, False
 
         params: Dict[str, Any] = {"limit": cursor_params.page_size + 1}
         if extra_params:
@@ -283,42 +285,58 @@ class EventQueryRepository:
         query_embedding: list,
         parsed,
         limit: int = 20,
+        offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """
         Semantic event search using pgvector cosine similarity.
-        Hard filters (city, state, date, is_online) from ParsedSearchQuery are applied as WHERE clauses.
+        Hard filters (city, state, category, date, is_online) from ParsedSearchQuery are applied as WHERE clauses.
         Results are ordered by vector distance (most similar first).
         """
         try:
             params: Dict[str, Any] = {
                 "query_vec": str(query_embedding),
-                "limit": limit,
-                "city": parsed.city,
-                "state": parsed.state,
-                "start_date": parsed.start_date,
-                "end_date": parsed.end_date,
-                "is_online": parsed.is_online,
+                "limit": limit + 1,  # fetch one extra to detect has_next
+                "offset": offset,
             }
+            conditions = [
+                "e.is_archived = FALSE",
+                "e.embedding IS NOT NULL",
+            ]
+            if parsed.city:
+                conditions.append(
+                    "(LOWER(e.city) = LOWER(:city) OR LOWER(e.formatted_address) LIKE :city_like)"
+                )
+                params["city"] = parsed.city
+                params["city_like"] = f"%{parsed.city.lower()}%"
+            if parsed.state:
+                # Exact match only — 2-letter abbreviation is too short for a safe LIKE pattern
+                conditions.append("LOWER(e.state) = LOWER(:state)")
+                params["state"] = parsed.state
+            if parsed.start_date:
+                conditions.append("e.start_time >= CAST(:start_date AS timestamptz)")
+                params["start_date"] = parsed.start_date
+            if parsed.end_date:
+                conditions.append("e.start_time <= CAST(:end_date AS timestamptz)")
+                params["end_date"] = parsed.end_date
+            if parsed.is_online is not None:
+                conditions.append("e.is_online = :is_online")
+                params["is_online"] = parsed.is_online
+
+            where_clause = " AND ".join(conditions)
             async with AsyncSessionLocal() as session:
-                result = await session.execute(text("""
+                result = await session.execute(text(f"""
                     SELECT e.*,
                            1 - (e.embedding <=> CAST(:query_vec AS vector)) AS similarity_score
                     FROM events e
-                    WHERE e.is_archived = FALSE
-                      AND e.embedding IS NOT NULL
-                      AND (:city IS NULL OR LOWER(e.city) = LOWER(:city))
-                      AND (:state IS NULL OR LOWER(e.state) = LOWER(:state))
-                      AND (:start_date IS NULL OR e.start_time >= CAST(:start_date AS timestamptz))
-                      AND (:end_date IS NULL OR e.start_time <= CAST(:end_date AS timestamptz))
-                      AND (:is_online IS NULL OR e.is_online = :is_online)
+                    WHERE {where_clause}
                     ORDER BY e.embedding <=> CAST(:query_vec AS vector) ASC
-                    LIMIT :limit
+                    LIMIT :limit OFFSET :offset
                 """), params)
-                rows = result.mappings().fetchall()
+                rows = result.fetchall()
                 events = []
                 for row in rows:
                     event = row_to_event_dict(row)
-                    event["similarity_score"] = row.get("similarity_score")
+                    event["similarity_score"] = row._mapping.get("similarity_score")
                     events.append(event)
                 return events
         except Exception as e:

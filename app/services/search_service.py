@@ -8,10 +8,11 @@ Phase 2: pgvector ANN search using event embeddings, with hard filters
 (city, state, date) from the LLM parser still applied as WHERE clauses.
 Falls back to Phase 1 SQL path if query embedding is unavailable.
 """
+import base64
 import json
 import os
 from datetime import date, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 
 from openai import AsyncOpenAI
 
@@ -20,13 +21,29 @@ from app.models.search import ParsedSearchQuery
 from app.repositories.events.event_query_repository import EventQueryRepository
 from app.services.embedding_service import generate_query_embedding
 from app.services.event_service import get_all_events_paginated
-from app.utils.cache_keys import search_cache_key, TTL_EVENT_QUERY
+from app.utils.cache_keys import embedding_cache_key, search_cache_key, TTL_EMBEDDING, TTL_EVENT_QUERY
 from app.utils.logger import get_service_logger
 from app.utils.redis_client import get_redis_client
 
 _event_query_repo = EventQueryRepository()
 
 logger = get_service_logger(__name__)
+
+
+def _encode_semantic_cursor(offset: int) -> str:
+    """Encode an offset as a base64 semantic cursor (distinct from keyset cursors)."""
+    return base64.b64encode(json.dumps({"type": "semantic", "offset": offset}).encode()).decode()
+
+
+def _decode_semantic_cursor(cursor: str) -> Optional[int]:
+    """Decode a semantic cursor, returning the offset. Returns None if not a semantic cursor."""
+    try:
+        data = json.loads(base64.b64decode(cursor.encode()).decode())
+        if data.get("type") == "semantic":
+            return data["offset"]
+    except Exception:
+        pass
+    return None
 
 _openai_client: Optional[AsyncOpenAI] = None
 
@@ -155,30 +172,68 @@ async def search_events(
     )
 
     # ── Phase 2: pgvector semantic search ────────────────────────────────────
-    # Embed the full query and search by cosine similarity.
-    # Hard filters (city, state, date, is_online) still applied as WHERE clauses.
-    # Only runs on the first page (semantic search returns top-N, not paginated).
-    if cursor_params.cursor is None:
-        query_embedding = await generate_query_embedding(query)
-        if query_embedding is not None:
-            events = await _event_query_repo.search_events_by_embedding(
-                query_embedding, parsed, limit=cursor_params.page_size
-            )
-            response = EventCursorPaginatedResponse.create(
-                items=events,
-                next_cursor=None,
-                prev_cursor=None,
-                has_next=False,
-                has_previous=False,
-                page_size=cursor_params.page_size,
-            )
-            logger.info(f"[SearchService] semantic path returned {len(events)} results")
-            if redis is not None:
+    # Uses offset-based pagination (semantic ranking has no stable keyset).
+    # Cursor encodes {"type": "semantic", "offset": N} — distinct from keyset cursors.
+    semantic_offset = _decode_semantic_cursor(cursor_params.cursor) if cursor_params.cursor else 0
+    is_semantic_cursor = semantic_offset is not None
+
+    if cursor_params.cursor is None or is_semantic_cursor:
+        offset = semantic_offset or 0
+        parts = []
+        if parsed.category:
+            parts.append(f"{parsed.category} events.")
+        if parsed.keywords:
+            parts.append(parsed.keywords + ".")
+        if parsed.city:
+            parts.append(f"Location: {parsed.city}" + (f", {parsed.state}." if parsed.state else "."))
+        enriched_query = " ".join(parts) if parts else query
+
+        # Cache embedding per enriched query — paginated requests reuse it without calling OpenAI
+        emb_key = embedding_cache_key(enriched_query)
+        query_embedding = None
+        if redis is not None:
+            try:
+                cached_emb = await redis.get(emb_key)
+                if cached_emb:
+                    query_embedding = json.loads(cached_emb)
+            except Exception:
+                pass
+        if query_embedding is None:
+            query_embedding = await generate_query_embedding(enriched_query)
+            if query_embedding is not None and redis is not None:
                 try:
-                    await redis.set(cache_key, response.model_dump_json(), ex=TTL_EVENT_QUERY)
+                    await redis.set(emb_key, json.dumps(query_embedding), ex=TTL_EMBEDDING)
                 except Exception:
                     pass
-            return response
+        if query_embedding is not None:
+            page_size = cursor_params.page_size
+            rows = await _event_query_repo.search_events_by_embedding(
+                query_embedding, parsed, limit=page_size, offset=offset
+            )
+            has_next = len(rows) > page_size
+            page = rows[:page_size]
+            next_cursor = _encode_semantic_cursor(offset + page_size) if has_next else None
+            prev_cursor = _encode_semantic_cursor(offset - page_size) if offset > 0 else None
+            response = EventCursorPaginatedResponse.create(
+                items=page,
+                next_cursor=next_cursor,
+                prev_cursor=prev_cursor,
+                has_next=has_next,
+                has_previous=offset > 0,
+                page_size=page_size,
+            )
+            logger.info(
+                f"[SearchService] semantic path: enriched='{enriched_query}' "
+                f"offset={offset} returning={len(page)} has_next={has_next}"
+            )
+            if page:
+                if redis is not None and offset == 0:
+                    try:
+                        await redis.set(cache_key, response.model_dump_json(), ex=TTL_EVENT_QUERY)
+                    except Exception:
+                        pass
+                return response
+            logger.info("[SearchService] semantic returned 0 — falling back to Phase 1 SQL")
 
     # ── Phase 1 fallback: structured SQL filters ─────────────────────────────
     # Used when embedding is unavailable, or for subsequent cursor pages.

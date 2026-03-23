@@ -7,6 +7,7 @@ TTL_INGESTED_IDS = 30 * 24 * 3600    # 30 days
 TTL_INGESTION_LOCK = 3600            # 1 hour
 TTL_TM_API = 8 * 3600                # 8 hours
 TTL_EVENT_QUERY = 600                # 10 minutes
+TTL_EMBEDDING = 3600                 # 1 hour
 TTL_USER_LOCATIONS = 1800            # 30 minutes
 
 # Static keys
@@ -33,6 +34,11 @@ def event_query_cache_key(cursor_params: dict, filters: dict) -> str:
 def search_cache_key(query: str) -> str:
     digest = hashlib.sha256(query.lower().strip().encode()).hexdigest()[:16]
     return f"sahana:search:{digest}"
+
+
+def embedding_cache_key(text: str) -> str:
+    digest = hashlib.sha256(text.strip().encode()).hexdigest()[:16]
+    return f"sahana:emb:{digest}"
 
 
 def nearby_events_cache_key(city: str, state: str, cursor_params: dict) -> str:
