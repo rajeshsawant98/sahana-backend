@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any, Dict, List, Optional
 import uuid
 
@@ -6,6 +7,15 @@ from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
 from app.repositories.events.event_mapper import build_update_params, parse_datetime, row_to_event_dict
 from app.utils.logger import get_repository_logger
+
+
+async def _embed_event(event_dict: Dict[str, Any]) -> None:
+    """Background task: generate and store embedding for an event."""
+    try:
+        from app.services.embedding_service import generate_and_store_event_embedding
+        await generate_and_store_event_embedding(event_dict)
+    except Exception:
+        pass  # non-critical — search falls back to SQL filters
 
 
 class EventCrudRepository:
@@ -107,6 +117,18 @@ class EventCrudRepository:
                     """), [{"eid": event_id, "email": e} for e in moderators])
 
                 await session.commit()
+
+            # Fire-and-forget: generate embedding in background
+            event_dict = {
+                "event_id":   event_id,
+                "event_name": data["eventName"],
+                "description": data.get("description", ""),
+                "categories": data.get("categories", []),
+                "city":       loc.get("city"),
+                "state":      loc.get("state"),
+            }
+            asyncio.create_task(_embed_event(event_dict))
+
             return {"eventId": event_id}
         except Exception as e:
             self.logger.error(f"Error creating event: {e}")
@@ -168,7 +190,24 @@ class EventCrudRepository:
                     params
                 )
                 await session.commit()
-                return result.rowcount > 0
+                updated = result.rowcount > 0
+
+            # Refresh embedding if any embedding-relevant field changed
+            _EMBEDDING_FIELDS = {"event_name", "description", "categories", "city", "state"}
+            if updated and _EMBEDDING_FIELDS.intersection(params):
+                # Fetch the updated event to build embedding text
+                event = await self.get_event_by_id(event_id)
+                if event:
+                    asyncio.create_task(_embed_event({
+                        "event_id":    event_id,
+                        "event_name":  event.get("eventName"),
+                        "description": event.get("description"),
+                        "categories":  event.get("categories", []),
+                        "city":        event.get("location", {}).get("city"),
+                        "state":       event.get("location", {}).get("state"),
+                    }))
+
+            return updated
         except Exception as e:
             self.logger.error(f"Error updating event {event_id}: {e}")
             return False

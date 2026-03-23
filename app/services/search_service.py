@@ -4,8 +4,9 @@ Natural language event search.
 Phase 1: GPT-4o-mini parses the query into structured filters, which are
 fed into the existing SQL pipeline.
 
-Phase 2 (future): swap the SQL step for pgvector ANN search using
-event_embeddings, keeping the same LLM parser for hard filters (city, date).
+Phase 2: pgvector ANN search using event embeddings, with hard filters
+(city, state, date) from the LLM parser still applied as WHERE clauses.
+Falls back to Phase 1 SQL path if query embedding is unavailable.
 """
 import json
 import os
@@ -16,10 +17,14 @@ from openai import AsyncOpenAI
 
 from app.models.pagination import CursorPaginationParams, EventCursorPaginatedResponse, EventFilters
 from app.models.search import ParsedSearchQuery
+from app.repositories.events.event_query_repository import EventQueryRepository
+from app.services.embedding_service import generate_query_embedding
 from app.services.event_service import get_all_events_paginated
 from app.utils.cache_keys import search_cache_key, TTL_EVENT_QUERY
 from app.utils.logger import get_service_logger
 from app.utils.redis_client import get_redis_client
+
+_event_query_repo = EventQueryRepository()
 
 logger = get_service_logger(__name__)
 
@@ -149,10 +154,34 @@ async def search_events(
         f"start={parsed.start_date} end={parsed.end_date}"
     )
 
-    # Merge category into keywords for fuzzy tsvector matching.
-    # Strip city/state words from keywords first — location must only flow through
-    # the hard city SQL filter, never through the tsvector, so there's no chance
-    # that "tempe" in keywords matches Denver events that mention Tempe in their text.
+    # ── Phase 2: pgvector semantic search ────────────────────────────────────
+    # Embed the full query and search by cosine similarity.
+    # Hard filters (city, state, date, is_online) still applied as WHERE clauses.
+    # Only runs on the first page (semantic search returns top-N, not paginated).
+    if cursor_params.cursor is None:
+        query_embedding = await generate_query_embedding(query)
+        if query_embedding is not None:
+            events = await _event_query_repo.search_events_by_embedding(
+                query_embedding, parsed, limit=cursor_params.page_size
+            )
+            response = EventCursorPaginatedResponse.create(
+                items=events,
+                next_cursor=None,
+                prev_cursor=None,
+                has_next=False,
+                has_previous=False,
+                page_size=cursor_params.page_size,
+            )
+            logger.info(f"[SearchService] semantic path returned {len(events)} results")
+            if redis is not None:
+                try:
+                    await redis.set(cache_key, response.model_dump_json(), ex=TTL_EVENT_QUERY)
+                except Exception:
+                    pass
+            return response
+
+    # ── Phase 1 fallback: structured SQL filters ─────────────────────────────
+    # Used when embedding is unavailable, or for subsequent cursor pages.
     clean_keywords = _strip_location_words(parsed.keywords, parsed.city, parsed.state)
     kw_parts = [p for p in [clean_keywords, parsed.category] if p]
     combined_keywords = " ".join(kw_parts) if kw_parts else None

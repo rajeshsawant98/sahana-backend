@@ -277,3 +277,50 @@ class EventQueryRepository:
         except Exception as e:
             self.logger.error(f"Error deleting old events: {e}", exc_info=True)
             return 0
+
+    async def search_events_by_embedding(
+        self,
+        query_embedding: list,
+        parsed,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """
+        Semantic event search using pgvector cosine similarity.
+        Hard filters (city, state, date, is_online) from ParsedSearchQuery are applied as WHERE clauses.
+        Results are ordered by vector distance (most similar first).
+        """
+        try:
+            params: Dict[str, Any] = {
+                "query_vec": str(query_embedding),
+                "limit": limit,
+                "city": parsed.city,
+                "state": parsed.state,
+                "start_date": parsed.start_date,
+                "end_date": parsed.end_date,
+                "is_online": parsed.is_online,
+            }
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(text("""
+                    SELECT e.*,
+                           1 - (e.embedding <=> CAST(:query_vec AS vector)) AS similarity_score
+                    FROM events e
+                    WHERE e.is_archived = FALSE
+                      AND e.embedding IS NOT NULL
+                      AND (:city IS NULL OR LOWER(e.city) = LOWER(:city))
+                      AND (:state IS NULL OR LOWER(e.state) = LOWER(:state))
+                      AND (:start_date IS NULL OR e.start_time >= CAST(:start_date AS timestamptz))
+                      AND (:end_date IS NULL OR e.start_time <= CAST(:end_date AS timestamptz))
+                      AND (:is_online IS NULL OR e.is_online = :is_online)
+                    ORDER BY e.embedding <=> CAST(:query_vec AS vector) ASC
+                    LIMIT :limit
+                """), params)
+                rows = result.mappings().fetchall()
+                events = []
+                for row in rows:
+                    event = row_to_event_dict(row)
+                    event["similarity_score"] = row.get("similarity_score")
+                    events.append(event)
+                return events
+        except Exception as e:
+            self.logger.error(f"Error in semantic event search: {e}", exc_info=True)
+            return []
