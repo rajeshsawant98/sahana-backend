@@ -19,7 +19,7 @@ from openai import AsyncOpenAI
 from app.models.pagination import CursorPaginationParams, EventCursorPaginatedResponse, EventFilters
 from app.models.search import ParsedSearchQuery
 from app.repositories.events.event_query_repository import EventQueryRepository
-from app.services.embedding_service import generate_query_embedding
+from app.services.embedding_service import EmbeddingProviderError, EmbeddingUnavailableError, generate_query_embedding
 from app.services.event_service import get_all_events_paginated
 from app.utils.cache_keys import embedding_cache_key, search_cache_key, TTL_EMBEDDING, TTL_EVENT_QUERY
 from app.utils.logger import get_service_logger
@@ -199,7 +199,10 @@ async def search_events(
             except Exception:
                 pass
         if query_embedding is None:
-            query_embedding = await generate_query_embedding(enriched_query)
+            try:
+                query_embedding = await generate_query_embedding(enriched_query)
+            except (EmbeddingUnavailableError, EmbeddingProviderError, ValueError) as emb_err:
+                logger.warning(f"[SearchService] Embedding unavailable, falling back to SQL: {emb_err}")
             if query_embedding is not None and redis is not None:
                 try:
                     await redis.set(emb_key, json.dumps(query_embedding), ex=TTL_EMBEDDING)

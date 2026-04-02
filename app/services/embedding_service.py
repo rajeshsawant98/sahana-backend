@@ -155,13 +155,31 @@ async def generate_and_store_event_embedding(event: dict) -> bool:
 # Query embedding (for semantic search)
 # ---------------------------------------------------------------------------
 
-async def generate_query_embedding(query_text: str) -> list[float] | None:
-    """Embed a raw NL search query for vector similarity search."""
+def is_embedding_configured() -> bool:
+    """Return True if the OpenAI client can be initialised (key present, package installed)."""
+    return _get_openai_client() is not None
+
+
+class EmbeddingUnavailableError(Exception):
+    """Raised when the embedding provider is permanently misconfigured."""
+
+
+class EmbeddingProviderError(Exception):
+    """Raised when a transient embedding API call fails (timeout, rate-limit, etc.)."""
+
+
+async def generate_query_embedding(query_text: str) -> list[float]:
+    """Embed a raw NL search query for vector similarity search.
+
+    Raises:
+        EmbeddingUnavailableError: OpenAI client cannot be constructed (no key / package missing).
+        EmbeddingProviderError: client exists but the API call failed (transient).
+    """
     client = _get_openai_client()
     if not client:
-        return None
+        raise EmbeddingUnavailableError("OpenAI client not configured")
     if not query_text or not query_text.strip():
-        return None
+        raise ValueError("query_text must be non-empty")
     try:
         response = await client.embeddings.create(
             model="text-embedding-3-small",
@@ -170,4 +188,4 @@ async def generate_query_embedding(query_text: str) -> list[float] | None:
         return response.data[0].embedding
     except Exception as e:
         logger.error(f"Failed to generate query embedding: {e}")
-        return None
+        raise EmbeddingProviderError(str(e)) from e

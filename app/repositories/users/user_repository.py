@@ -202,6 +202,19 @@ class UserRepository:
             self.logger.error(f"Error retrieving user: {e}")
             return None
 
+    async def get_by_email_strict(self, email: str) -> Optional[Dict[str, Any]]:
+        """Like get_by_email but raises on DB error instead of swallowing it.
+        Returns None only when the row is genuinely absent.
+        Callers that need to distinguish 'not found' from 'DB down' should use this.
+        """
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(
+                text("SELECT * FROM users WHERE email = :email"),
+                {"email": email}
+            )
+            row = result.fetchone()
+            return _row_to_user_dict(row) if row else None
+
     async def get_by_emails(self, emails: List[str]) -> Dict[str, Any]:
         """Fetch multiple users by email in a single query. Returns dict keyed by email."""
         if not emails:

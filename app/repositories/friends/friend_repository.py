@@ -151,6 +151,46 @@ class FriendRepository:
             self.logger.error(f"Error getting friend IDs: {e}")
             return []
 
+    async def get_accepted_friendship_ids_strict(self, user_id: str) -> List[str]:
+        """Like get_accepted_friendship_ids but raises on DB error instead of returning []."""
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text("""
+                SELECT
+                    CASE
+                        WHEN sender_id = :uid THEN receiver_id
+                        ELSE sender_id
+                    END AS friend_id
+                FROM friend_requests
+                WHERE status = 'accepted'
+                  AND (sender_id = :uid OR receiver_id = :uid)
+            """), {"uid": user_id})
+            return [row.friend_id for row in result.fetchall()]
+
+    async def get_requests_for_user_strict(
+        self, user_id: str, direction: str = "all", status: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Like get_requests_for_user but raises on DB error instead of returning []."""
+        params: Dict[str, Any] = {"uid": user_id}
+        if direction == "received":
+            where = "receiver_id = :uid"
+        elif direction == "sent":
+            where = "sender_id = :uid"
+        else:
+            where = "(sender_id = :uid OR receiver_id = :uid)"
+        status_clause = ""
+        if status:
+            status_clause = " AND status = :status"
+            params["status"] = status
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(text(f"""
+                SELECT *,
+                       CASE WHEN receiver_id = :uid THEN 'received' ELSE 'sent' END AS direction
+                FROM friend_requests
+                WHERE {where}{status_clause}
+                ORDER BY created_at DESC
+            """), params)
+            return [_row_to_dict(row) for row in result.fetchall()]
+
     async def get_request_by_sender_receiver(
         self, sender_id: str, receiver_id: str
     ) -> Optional[Dict[str, Any]]:

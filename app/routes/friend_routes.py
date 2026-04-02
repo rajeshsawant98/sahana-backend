@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from app.services.friend_service import friend_service
 from app.models.friend import (
@@ -169,6 +169,8 @@ async def search_users_semantic(
             user_email=current_user["email"],
             limit=limit,
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to run semantic user search: {str(e)}")
 
