@@ -2,7 +2,7 @@ from app.repositories.friends import FriendRepository
 from app.repositories.users import UserRepository
 from app.models.friend import UserSearchResult
 from app.utils.logger import get_service_logger
-from typing import List, Dict, Any, Optional, Literal
+from typing import List, Dict, Any, Optional, Literal, Set
 
 class UserDiscoveryService:
     """Service for discovering and searching users"""
@@ -123,6 +123,60 @@ class UserDiscoveryService:
         except Exception as e:
             self.logger.error(f"Error getting user suggestions: {str(e)}")
             return []
+
+    async def search_users_semantic(
+        self,
+        description: str,
+        user_email: str,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Search users by natural language description using pgvector similarity.
+
+        Embeds the description and finds users whose profile embedding is closest.
+        Excludes the requester, existing friends, and pending-request users.
+        """
+        from app.services.embedding_service import generate_query_embedding
+
+        if not description or not description.strip():
+            return []
+
+        query_embedding = await generate_query_embedding(description.strip())
+        if query_embedding is None:
+            return []
+
+        # Build exclusion set: self + accepted friends + both sides of pending requests
+        excluded: Set[str] = {user_email}
+        excluded.update(await self.friend_repo.get_accepted_friendship_ids(user_email))
+        pending = await self.friend_repo.get_requests_for_user(user_email, direction="all", status="pending")
+        for r in pending:
+            excluded.add(r.get("sender_id", ""))
+            excluded.add(r.get("receiver_id", ""))
+        excluded.discard("")
+
+        users_data = await self.user_repo.get_semantic_matches(
+            user_email=user_email,
+            embedding=query_embedding,
+            limit=limit,
+            excluded_emails=list(excluded),
+        )
+
+        results = []
+        for u in users_data:
+            results.append({
+                "id": u.get("id", u.get("email", "")),
+                "name": u.get("name", ""),
+                "email": u.get("email", ""),
+                "bio": u.get("bio"),
+                "profession": u.get("profession"),
+                "profile_picture": u.get("profile_picture"),
+                "location": u.get("location"),
+                "interests": list(u.get("interests") or []),
+                "vibe_description": u.get("vibe_description"),
+                "similarity_score": round(float(u.get("similarity_score") or 0), 4),
+                "friendship_status": "none",
+            })
+        return results
+
 
 # Create service instance
 user_discovery_service = UserDiscoveryService()

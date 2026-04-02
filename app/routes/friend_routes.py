@@ -149,11 +149,28 @@ async def search_users(
             user_email=current_user["email"],
             limit=limit
         )
-        
+
         return friend_service.format_user_search_response(search_results)
-        
+
     except Exception as e:
         raise HTTPExceptionHelper.server_error(f"Failed to search users: {str(e)}")
+
+
+@friend_router.get("/search/semantic")
+async def search_users_semantic(
+    q: str = Query(..., description="Natural language description, e.g. 'someone who hikes and likes coffee'"),
+    limit: int = Query(20, ge=1, le=100, description="Maximum number of results to return"),
+    current_user: dict = Depends(user_only),
+) -> List[Dict[str, Any]]:
+    """Find people whose profiles match a natural language description using AI similarity search."""
+    try:
+        return await friend_service.search_users_semantic(
+            description=q,
+            user_email=current_user["email"],
+            limit=limit,
+        )
+    except Exception as e:
+        raise HTTPExceptionHelper.server_error(f"Failed to run semantic user search: {str(e)}")
 
 
 @friend_router.get("/recommendations")

@@ -61,8 +61,17 @@ class FriendService:
         # Business logic: validate search term
         if not search_term or not search_term.strip():
             return []
-        
+
         return await self.user_discovery_service.search_users(search_term.strip(), user_email, limit)
+
+    async def search_users_semantic(
+        self,
+        description: str,
+        user_email: str,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Search users by natural language description (e.g. 'someone who hikes and likes coffee')."""
+        return await self.user_discovery_service.search_users_semantic(description, user_email, limit)
 
     async def get_user_suggestions(self, user_email: str, limit: int = 10) -> List[UserSearchResult]:
         """Get friend suggestions based on mutual friends, interests, etc."""
