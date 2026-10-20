@@ -136,7 +136,8 @@ class TestIngestionMutex:
                 with patch('app.services.event_ingestion_service.get_unique_user_locations', new_callable=AsyncMock, return_value=[]):
                     with patch('app.services.event_ingestion_service._fetch_tm_all_cities', new_callable=AsyncMock, return_value={}):
                         with patch('app.services.event_ingestion_service.save_url_cache', new_callable=AsyncMock):
-                            with patch('app.services.event_ingestion_service._flush_event_query_cache', new=lambda: _noop_flush()):
+                            with patch('app.services.event_ingestion_service._flush_event_query_cache', new=lambda: _noop_flush()), \
+                                 patch('app.services.event_ingestion_service._archive_past_events', new_callable=AsyncMock, return_value=0):
                                 from app.services.event_ingestion_service import ingest_events_for_all_cities
                                 result = await ingest_events_for_all_cities()
 
@@ -154,7 +155,8 @@ class TestIngestionMutex:
                 with patch('app.services.event_ingestion_service.get_unique_user_locations', new_callable=AsyncMock, return_value=[]):
                     with patch('app.services.event_ingestion_service._fetch_tm_all_cities', new_callable=AsyncMock, return_value={}):
                         with patch('app.services.event_ingestion_service.save_url_cache', new_callable=AsyncMock):
-                            with patch('app.services.event_ingestion_service._flush_event_query_cache', new=lambda: _noop_flush()):
+                            with patch('app.services.event_ingestion_service._flush_event_query_cache', new=lambda: _noop_flush()), \
+                                 patch('app.services.event_ingestion_service._archive_past_events', new_callable=AsyncMock, return_value=0):
                                 from app.services.event_ingestion_service import ingest_events_for_all_cities
                                 result = await ingest_events_for_all_cities()
 
