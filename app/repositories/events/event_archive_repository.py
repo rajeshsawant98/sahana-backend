@@ -73,7 +73,7 @@ class EventArchiveRepository:
                         archive_reason = :reason,
                         updated_at     = NOW()
                     WHERE is_archived = FALSE
-                      AND start_time + (duration * interval '1 second') < NOW()
+                      AND start_time + (duration * interval '1 minute') < NOW()
                 """), {"archived_by": archived_by, "reason": reason})
                 await session.commit()
                 count = result.rowcount

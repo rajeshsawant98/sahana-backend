@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS events (
 
     -- Timing
     start_time          TIMESTAMPTZ,
-    duration            INTEGER,        -- seconds
+    duration            INTEGER,        -- minutes
 
     -- Classification
     -- 'categories' is the canonical multi-value list used for filtering

@@ -251,7 +251,7 @@ class EventQueryRepository:
                 result = await session.execute(text("""
                     SELECT * FROM events
                     WHERE is_archived = FALSE
-                      AND start_time + (duration * interval '1 second') < NOW()
+                      AND start_time + (duration * interval '1 minute') < NOW()
                     LIMIT 1000
                 """))
                 return [row_to_event_dict(row) for row in result.fetchall()]

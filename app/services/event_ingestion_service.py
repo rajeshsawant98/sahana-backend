@@ -21,6 +21,10 @@ def _flush_event_query_cache():
     from app.services.event_service import flush_event_query_cache
     return flush_event_query_cache()
 
+def _archive_past_events():
+    from app.services.event_service import archive_past_events
+    return archive_past_events("system")
+
 logger = get_service_logger(__name__)
 
 # Repo is used for all DB operations
@@ -207,6 +211,8 @@ async def ingest_ticketmaster_events_for_all_cities() -> dict:
                 "skipped": result["skipped"],
             })
 
+        archived = await _archive_past_events()
+
         try:
             await _flush_event_query_cache()
         except Exception as e:
@@ -216,6 +222,7 @@ async def ingest_ticketmaster_events_for_all_cities() -> dict:
         return {
             "status": "success",
             "total_ingested": total_events,
+            "archived": archived,
             "processed_cities": len(summary),
             "details": summary,
         }
@@ -274,6 +281,8 @@ async def ingest_events_for_all_cities() -> dict:
 
         await save_url_cache(url_cache, redis=redis)
 
+        archived = await _archive_past_events()
+
         # Invalidate event query cache so fresh data is served
         try:
             await _flush_event_query_cache()
@@ -284,6 +293,7 @@ async def ingest_events_for_all_cities() -> dict:
         return {
             "status": "success",
             "total_ingested": total_events,
+            "archived": archived,
             "processed_cities": len(summary),
             "details": summary,
         }
